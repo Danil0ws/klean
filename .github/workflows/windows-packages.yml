@@ -35,7 +35,7 @@ jobs:
           
           # Download Windows binary to get hash
           TEMP_DIR=$(mktemp -d)
-          wget https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
+          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
           SHA256=$(sha256sum $TEMP_DIR/klean.zip | awk '{print $1}')
           
           cat > klean.nuspec << EOF
@@ -47,10 +47,10 @@ jobs:
               <title>klean</title>
               <authors>klean contributors</authors>
               <owners>klean</owners>
-              <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
-              <licenseUrl>https://github.com/${{ github.repository }}/blob/main/LICENSE</licenseUrl>
-              <projectSourceUrl>https://github.com/${{ github.repository }}</projectSourceUrl>
-              <docsUrl>https://github.com/${{ github.repository }}/blob/main/README.md</docsUrl>
+              <projectUrl>https://github.com/danil0ws/klean</projectUrl>
+              <licenseUrl>https://github.com/danil0ws/klean/blob/main/LICENSE</licenseUrl>
+              <projectSourceUrl>https://github.com/danil0ws/klean</projectSourceUrl>
+              <docsUrl>https://github.com/danil0ws/klean/blob/main/README.md</docsUrl>
               <description>
                 Safe, efficient CLI for cleaning development environments
               </description>
@@ -59,7 +59,7 @@ jobs:
               </summary>
               <tags>cleaning development build cache artifacts</tags>
               <copyright>2024</copyright>
-              <releaseNotes>https://github.com/${{ github.repository }}/releases/tag/v${VERSION}</releaseNotes>
+              <releaseNotes>https://github.com/danil0ws/klean/releases/tag/v${VERSION}</releaseNotes>
             </metadata>
             <files>
               <file src="legal/**" target="legal" />
@@ -76,7 +76,7 @@ jobs:
           $packageName = 'klean'
           $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
           
-          $url = 'https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip'
+          $url = 'https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip'
           $checksum = '${SHA256}'
           $checksumType = 'sha256'
           
@@ -144,7 +144,7 @@ jobs:
           
           # Download binary to get hash
           TEMP_DIR=$(mktemp -d)
-          wget https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
+          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
           SHA256=$(sha256sum $TEMP_DIR/klean.zip | awk '{print $1}')
           
           cat > klean.installer.yaml << EOF
@@ -155,7 +155,7 @@ jobs:
           Installers:
           - Architecture: x64
             InstallerType: zip
-            InstallerUrl: https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip
+            InstallerUrl: https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip
             InstallerSha256: ${SHA256}
           ManifestType: installer
           ManifestVersion: 1.4.0
@@ -167,12 +167,12 @@ jobs:
           PackageVersion: ${DOTVERSION}
           PackageLocale: en-US
           Publisher: klean contributors
-          PublisherUrl: https://github.com/${{ github.repository }}
-          PublisherSupportUrl: https://github.com/${{ github.repository }}/issues
+          PublisherUrl: https://github.com/danil0ws/klean
+          PublisherSupportUrl: https://github.com/danil0ws/klean/issues
           PackageName: klean
-          PackageUrl: https://github.com/${{ github.repository }}
+          PackageUrl: https://github.com/danil0ws/klean
           License: MIT OR Apache-2.0
-          LicenseUrl: https://github.com/${{ github.repository }}/blob/main/LICENSE
+          LicenseUrl: https://github.com/danil0ws/klean/blob/main/LICENSE
           ShortDescription: Safe, efficient CLI for cleaning development environments
           Description: |
             klean is a comprehensive tool inspired by npkill that safely removes build artifacts,
@@ -207,7 +207,7 @@ jobs:
             This PR adds or updates the klean package for Windows Package Manager (winget).
             
             - Version: ${{ inputs.version }}
-            - Repository: ${{ github.repository }}
+            - Repository: danil0ws/klean
           branch: create-pull-request/klean-update
           delete-branch: true
           path: winget-manifest
@@ -238,7 +238,7 @@ jobs:
           
           # Update plugin.toml if exists
           if [ -f "plugin.toml" ]; then
-            sed -i "s/repo = .*/repo = \"${{ github.repository }}\"/" plugin.toml
+            sed -i "s/repo = .*/repo = \"danil0ws/klean\"/" plugin.toml
           fi
           
           git config user.name "klean bot"

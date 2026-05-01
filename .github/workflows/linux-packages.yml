@@ -97,11 +97,11 @@ jobs:
           pkgrel=1
           pkgdesc="Safe, efficient CLI for cleaning development environments"
           arch=('x86_64' 'aarch64')
-          url="https://github.com/${{ github.repository }}"
+          url="https://github.com/danil0ws/klean"
           license=('MIT' 'Apache')
           makedepends=('rust' 'cargo')
           
-          source=("https://github.com/${{ github.repository }}/archive/v${pkgver}.tar.gz")
+          source=("https://github.com/danil0ws/klean/archive/v${pkgver}.tar.gz")
           sha256sums=('SKIP')
           
           build() {

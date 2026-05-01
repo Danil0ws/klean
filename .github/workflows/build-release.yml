@@ -178,25 +178,25 @@ jobs:
 
       - name: Trigger Homebrew update
         run: |
-          gh workflow run homebrew-update.yml --repo ${{ github.repository }} -f version=${{ steps.version.outputs.VERSION }}
+          gh workflow run homebrew-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger AUR update
         run: |
-          gh workflow run aur-update.yml --repo ${{ github.repository }} -f version=${{ steps.version.outputs.VERSION }}
+          gh workflow run aur-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
       - name: Trigger Scoop update
         run: |
-          gh workflow run scoop-update.yml --repo ${{ github.repository }} -f version=${{ steps.version.outputs.VERSION }}
+          gh workflow run scoop-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Trigger Linux packages update
         run: |
-          gh workflow run linux-packages.yml --repo ${{ github.repository }} -f version=${{ steps.version.outputs.VERSION }}
+          gh workflow run linux-packages.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

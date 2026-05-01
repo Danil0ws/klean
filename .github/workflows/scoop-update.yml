@@ -39,7 +39,7 @@ jobs:
           TEMP_DIR=$(mktemp -d)
           
           # Windows x86_64
-          wget https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/win.zip
+          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/win.zip
           WIN_HASH=$(sha256sum $TEMP_DIR/win.zip | awk '{print $1}')
           
           # Create manifest
@@ -47,14 +47,14 @@ jobs:
           {
               "version": "${VERSION}",
               "description": "Safe, efficient CLI for cleaning development environments",
-              "homepage": "https://github.com/${{ github.repository }}",
+              "homepage": "https://github.com/danil0ws/klean",
               "license": "MIT OR Apache-2.0",
-              "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip",
+              "url": "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip",
               "hash": "${WIN_HASH}",
               "bin": "klean.exe",
               "checkver": "github",
               "autoupdate": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/klean-v\$version-x86_64-pc-windows-msvc.zip"
+                  "url": "https://github.com/danil0ws/klean/releases/download/v\$version/klean-v\$version-x86_64-pc-windows-msvc.zip"
               }
           }
           EOF

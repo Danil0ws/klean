@@ -40,7 +40,7 @@ jobs:
           
           # Download the source to calculate checksum
           TEMP_DIR=$(mktemp -d)
-          wget https://github.com/${{ github.repository }}/archive/v${VERSION}.tar.gz -O $TEMP_DIR/source.tar.gz
+          wget https://github.com/danil0ws/klean/archive/v${VERSION}.tar.gz -O $TEMP_DIR/source.tar.gz
           SHA256=$(sha256sum $TEMP_DIR/source.tar.gz | awk '{print $1}')
           
           cat > PKGBUILD << EOF
@@ -50,11 +50,11 @@ jobs:
           pkgrel=1
           pkgdesc="Safe, efficient CLI for cleaning development environments"
           arch=('x86_64' 'aarch64')
-          url="https://github.com/${{ github.repository }}"
+          url="https://github.com/danil0ws/klean"
           license=('MIT' 'Apache')
           makedepends=('rust' 'cargo')
           
-          source=("https://github.com/${{ github.repository }}/archive/v\${pkgver}.tar.gz")
+          source=("https://github.com/danil0ws/klean/archive/v\${pkgver}.tar.gz")
           sha256sums=('${SHA256}')
           
           build() {

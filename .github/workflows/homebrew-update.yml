@@ -30,7 +30,7 @@ jobs:
           cd homebrew-klean
           
           # Download the macOS x86_64 binary to get its hash
-          wget https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz -O /tmp/klean.tar.gz
+          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz -O /tmp/klean.tar.gz
           
           # Calculate SHA256
           SHA256=$(sha256sum /tmp/klean.tar.gz | awk '{print $1}')
@@ -39,8 +39,8 @@ jobs:
           cat > Formula/klean.rb << EOF
           class Klean < Formula
             desc "Safe, efficient CLI for cleaning development environments"
-            homepage "https://github.com/${{ github.repository }}"
-            url "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz"
+            homepage "https://github.com/danil0ws/klean"
+            url "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz"
             sha256 "${SHA256}"
             license "MIT OR Apache-2.0"
           
