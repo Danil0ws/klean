@@ -1,0 +1,8 @@
+# .klignore - Minimal example
+
+# Protect specific projects
+/my-important-app/node_modules
+/.venv-main
+
+# Protect environment files
+/.env.production

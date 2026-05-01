@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>klean</id>
+    <version>1.0.0</version>
+    <packageSourceUrl>https://github.com/danil0ws/chocolatey-klean</packageSourceUrl>
+    <owners>klean</owners>
+    <title>klean</title>
+    <authors>klean contributors</authors>
+    <projectUrl>https://github.com/danil0ws/klean</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/klean/klean/main/assets/icon.png</iconUrl>
+    <copyright>2024 klean contributors</copyright>
+    <licenseUrl>https://github.com/danil0ws/klean/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/danil0ws/klean</projectSourceUrl>
+    <docsUrl>https://github.com/danil0ws/klean/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/danil0ws/klean/issues</bugTrackerUrl>
+    <tags>development build cache cleanup artifacts developer-tools</tags>
+    <summary>
+      Safe, efficient CLI for cleaning development environments
+    </summary>
+    <description>
+      klean is a comprehensive tool inspired by npkill that safely removes build artifacts,
+      caches, and dependencies for Node.js, Python, Rust, Java, C#, PHP, Ruby, and 20+ other
+      programming languages. It includes an interactive TUI mode with safety features like
+      dry-run, .klignore rules, and automatic backup support.
+
+      Features:
+      - Multi-language artifact detection
+      - Interactive and CLI modes
+      - .klignore support (gitignore format)
+      - Dry-run for safe preview
+      - Backup directory option
+      - Size filtering
+      - Cross-platform support
+    </description>
+    <releaseNotes>
+      https://github.com/danil0ws/klean/releases/tag/v1.0.0
+    </releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+    <file src="legal\**" target="legal" />
+  </files>
+</package>

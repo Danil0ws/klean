@@ -1,0 +1,8 @@
+# klean.toml - Minimal configuration
+# Just the essentials to get started
+
+# Only delete artifacts we're sure about
+respect_gitignore = true
+
+# Backup instead of permanently deleting
+backup_dir = "~/.klean-backups"

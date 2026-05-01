@@ -1,0 +1,86 @@
+name: Build Binary
+description: Build Rust binary for specified target
+
+inputs:
+  target:
+    description: 'Rust target triple (e.g., x86_64-unknown-linux-musl)'
+    required: true
+  use_cross:
+    description: 'Whether to use cross for cross-compilation'
+    required: false
+    default: 'false'
+
+outputs:
+  artifact_name:
+    description: 'Name of the created artifact'
+    value: ${{ steps.artifact.outputs.name }}
+  artifact_path:
+    description: 'Path to the created artifact'
+    value: ${{ steps.artifact.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.target }}
+
+    - name: Setup Rust cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.target }}
+
+    - name: Install cross
+      if: inputs.use_cross == 'true'
+      shell: bash
+      run: cargo install cross
+
+    - name: Build binary
+      shell: bash
+      run: |
+        if [ "${{ inputs.use_cross }}" = "true" ]; then
+          cross build --release --target ${{ inputs.target }}
+        else
+          cargo build --release --target ${{ inputs.target }}
+        fi
+
+    - name: Detect binary name
+      id: binary
+      shell: bash
+      run: |
+        if [[ "${{ inputs.target }}" == *"windows"* ]]; then
+          echo "name=klean.exe" >> $GITHUB_OUTPUT
+        else
+          echo "name=klean" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Strip binary
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        strip "target/${{ inputs.target }}/release/${{ steps.binary.outputs.name }}" || true
+
+    - name: Create artifact
+      id: artifact
+      shell: bash
+      run: |
+        mkdir -p artifacts
+        
+        if [[ "${{ inputs.target }}" == *"windows"* ]]; then
+          # Windows: create .zip
+          cp "target/${{ inputs.target }}/release/${{ steps.binary.outputs.name }}" artifacts/
+          cd artifacts
+          7z a "klean-${GITHUB_REF#refs/tags/}-${{ inputs.target }}.zip" "${{ steps.binary.outputs.name }}"
+          rm "${{ steps.binary.outputs.name }}"
+          echo "name=$(ls *.zip)" >> $GITHUB_OUTPUT
+          echo "path=artifacts/$(ls *.zip)" >> $GITHUB_OUTPUT
+        else
+          # Unix: create .tar.gz
+          cp "target/${{ inputs.target }}/release/${{ steps.binary.outputs.name }}" artifacts/
+          cd artifacts
+          tar czf "klean-${GITHUB_REF#refs/tags/}-${{ inputs.target }}.tar.gz" "${{ steps.binary.outputs.name }}"
+          rm "${{ steps.binary.outputs.name }}"
+          echo "name=$(ls *.tar.gz)" >> $GITHUB_OUTPUT
+          echo "path=artifacts/$(ls *.tar.gz)" >> $GITHUB_OUTPUT
+        fi

@@ -1,0 +1,68 @@
+# .klignore - Protected directories
+# This file follows .gitignore format
+# Directories matching patterns here will NEVER be cleaned
+
+# ============================================================================
+# PRODUCTION DIRECTORIES
+# ============================================================================
+
+# Critical application directories (from project root)
+/production-app
+/live-app
+/important-data
+
+# ============================================================================
+# SPECIFIC PROJECT PROTECTION
+# ============================================================================
+
+# Protect monorepo applications
+apps/critical-app/node_modules
+services/api/vendor
+web/main/target
+
+# ============================================================================
+# PATTERN-BASED PROTECTION
+# ============================================================================
+
+# Protect any node_modules in specific directory
+projects/*/node_modules
+
+# Protect build directories at specific paths
+src/*/build
+apps/**/dist
+
+# ============================================================================
+# ENVIRONMENT-SPECIFIC PROTECTION
+# ============================================================================
+
+# Never clean production environments
+/.env.production
+/prod-*
+
+# Project-specific virtual environments (keep the main one)
+/.venv-production
+/venv-main
+
+# ============================================================================
+# DEVELOPER DIRECTORIES
+# ============================================================================
+
+# Protect your active development directory
+/my-active-project
+
+# ============================================================================
+# COMMENTS
+# ============================================================================
+
+# Everything after # is a comment
+# Blank lines are ignored
+# You can also use ! to negate patterns (advanced)
+
+# ============================================================================
+# NOTES
+# ============================================================================
+
+# Patterns are relative to the directory containing .klignore
+# Use / at the start to match from directory root
+# Use / at the end to match directories only
+# Use * for wildcard matching

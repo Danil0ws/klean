@@ -1,0 +1,183 @@
+name: Build Linux Packages
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: 'Version to publish (e.g., v1.0.0)'
+
+jobs:
+  build-deb:
+    name: Build .deb package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cargo-deb
+
+      - name: Build .deb
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+          
+          # Update version in Cargo.toml
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" Cargo.toml
+          
+          cargo deb --release
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: target/debian/*.deb
+          retention-days: 1
+
+  build-rpm:
+    name: Build .rpm package
+    runs-on: ubuntu-latest
+    container: centos:7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust and dependencies
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source $HOME/.cargo/env
+          yum groupinstall -y "Development Tools"
+          yum install -y openssl-devel cargo-generate-rpm
+
+      - name: Build .rpm
+        run: |
+          source $HOME/.cargo/env
+          
+          VERSION="${{ inputs.version }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+          
+          # Update version
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" Cargo.toml
+          
+          cargo build --release
+          cargo generate-rpm
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: target/generate-rpm/*.rpm
+          retention-days: 1
+
+  build-arch:
+    name: Build Arch Linux package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create PKGBUILD
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+          
+          mkdir -p pkgbuild
+          
+          cat > pkgbuild/PKGBUILD << 'EOF'
+          # Maintainer: klean maintainers
+          pkgname=klean
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="Safe, efficient CLI for cleaning development environments"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT' 'Apache')
+          makedepends=('rust' 'cargo')
+          
+          source=("https://github.com/${{ github.repository }}/archive/v${pkgver}.tar.gz")
+          sha256sums=('SKIP')
+          
+          build() {
+              cd "klean-${pkgver}"
+              cargo build --release --locked
+          }
+          
+          package() {
+              cd "klean-${pkgver}"
+              install -Dm755 target/release/klean "$pkgdir/usr/bin/klean"
+              install -Dm644 README.md "$pkgdir/usr/share/doc/klean/README.md"
+              install -Dm644 LICENSE "$pkgdir/usr/share/licenses/klean/LICENSE"
+          }
+          EOF
+          
+          # Replace VERSION placeholder
+          sed -i "s/\${VERSION}/${VERSION}/g" pkgbuild/PKGBUILD
+
+      - name: Upload PKGBUILD
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch-pkgbuild
+          path: pkgbuild/PKGBUILD
+          retention-days: 1
+
+  publish-to-packagecloud:
+    name: Publish packages to Packagecloud
+    runs-on: ubuntu-latest
+    needs: [build-deb, build-rpm]
+    if: always()
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: Install packagecloud CLI
+        run: |
+          gem install packagecloud-ruby
+
+      - name: Publish .deb
+        run: |
+          find packages -name "*.deb" -exec packagecloud push ${{ secrets.PACKAGECLOUD_REPO }}/ubuntu/focal {} \;
+        env:
+          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
+        continue-on-error: true
+
+      - name: Publish .rpm
+        run: |
+          find packages -name "*.rpm" -exec packagecloud push ${{ secrets.PACKAGECLOUD_REPO }}/el/7 {} \;
+        env:
+          PACKAGECLOUD_TOKEN: ${{ secrets.PACKAGECLOUD_TOKEN }}
+        continue-on-error: true
+
+  upload-to-release:
+    name: Upload packages to Release
+    runs-on: ubuntu-latest
+    needs: [build-deb, build-rpm, build-arch]
+    if: always()
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packages
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            packages/**/*.deb
+            packages/**/*.rpm
+            packages/arch-pkgbuild/PKGBUILD
+          tag_name: ${{ inputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true

@@ -1,0 +1,88 @@
+name: Update AUR
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: 'Version to publish (e.g., v1.0.0)'
+
+jobs:
+  update-aur:
+    name: Update AUR package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+
+      - name: Clone AUR repository
+        run: |
+          git clone ssh://aur@aur.archlinux.org/klean.git aur-klean
+          cd aur-klean
+
+      - name: Update PKGBUILD
+        run: |
+          cd aur-klean
+          
+          VERSION="${{ inputs.version }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+          
+          # Download the source to calculate checksum
+          TEMP_DIR=$(mktemp -d)
+          wget https://github.com/${{ github.repository }}/archive/v${VERSION}.tar.gz -O $TEMP_DIR/source.tar.gz
+          SHA256=$(sha256sum $TEMP_DIR/source.tar.gz | awk '{print $1}')
+          
+          cat > PKGBUILD << EOF
+          # Maintainer: klean maintainers
+          pkgname=klean
+          pkgver=${VERSION}
+          pkgrel=1
+          pkgdesc="Safe, efficient CLI for cleaning development environments"
+          arch=('x86_64' 'aarch64')
+          url="https://github.com/${{ github.repository }}"
+          license=('MIT' 'Apache')
+          makedepends=('rust' 'cargo')
+          
+          source=("https://github.com/${{ github.repository }}/archive/v\${pkgver}.tar.gz")
+          sha256sums=('${SHA256}')
+          
+          build() {
+              cd "klean-\${pkgver}"
+              cargo build --release --locked
+          }
+          
+          package() {
+              cd "klean-\${pkgver}"
+              install -Dm755 target/release/klean "\$pkgdir/usr/bin/klean"
+              install -Dm644 README.md "\$pkgdir/usr/share/doc/klean/README.md"
+              install -Dm644 LICENSE "\$pkgdir/usr/share/licenses/klean/LICENSE"
+          }
+          EOF
+          
+          rm -rf $TEMP_DIR
+
+      - name: Update .SRCINFO
+        run: |
+          cd aur-klean
+          makepkg --printsrcinfo > .SRCINFO
+
+      - name: Push to AUR
+        run: |
+          cd aur-klean
+          
+          git config user.name "klean bot"
+          git config user.email "bot@aur.archlinux.org"
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to v${{ inputs.version }}" || true
+          git push

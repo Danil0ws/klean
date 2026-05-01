@@ -1,0 +1,65 @@
+# klean.toml - Global configuration
+# Location: ~/.config/klean/config.toml or ./klean.toml (project-specific)
+
+# ============================================================================
+# BACKUP SETTINGS
+# ============================================================================
+
+# Move artifacts to this directory instead of permanently deleting them
+# If not set, artifacts are permanently deleted
+backup_dir = "/home/user/.klean-backups"
+
+# ============================================================================
+# IGNORE SETTINGS
+# ============================================================================
+
+# Respect .gitignore files in scanned directories
+# Default: true
+respect_gitignore = true
+
+# ============================================================================
+# CUSTOM ARTIFACT PATTERNS
+# ============================================================================
+
+# Define custom artifact patterns for your project
+# These are added to the default patterns
+
+[[patterns]]
+name = "gradle_cache"
+patterns = [".gradle"]
+languages = ["Java", "Kotlin"]
+description = "Gradle build cache directory"
+safe_to_delete = true
+
+[[patterns]]
+name = "npm_cache"
+patterns = [".npm", "npm-cache"]
+languages = ["JavaScript", "TypeScript"]
+description = "NPM package cache"
+safe_to_delete = true
+
+[[patterns]]
+name = "custom_temp"
+patterns = [".temp", "tmp", "temporary"]
+languages = ["Generic"]
+description = "Custom temporary files"
+safe_to_delete = true
+
+# ============================================================================
+# VERBOSITY
+# ============================================================================
+
+# Default verbosity level (0 = warn, 1 = info, 2 = debug, 3 = trace)
+verbosity = 1
+
+# ============================================================================
+# CUSTOM PATTERNS (SIMPLE)
+# ============================================================================
+
+# Simple string patterns to include in scanning
+custom_patterns = [
+    ".DS_Store",          # macOS
+    "Thumbs.db",          # Windows
+    "*.log",              # Log files
+    ".env.local",         # Local environment files
+]

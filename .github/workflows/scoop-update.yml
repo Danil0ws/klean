@@ -1,0 +1,93 @@
+name: Update Scoop
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        required: true
+        description: 'Version to publish (e.g., v1.0.0)'
+
+jobs:
+  update-scoop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout Scoop bucket
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/scoop-bucket
+          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          path: scoop-bucket
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Generate manifest
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION=${VERSION#v}  # Remove 'v' prefix
+          
+          cd scoop-bucket
+          
+          # Download binaries and calculate hashes
+          TEMP_DIR=$(mktemp -d)
+          
+          # Windows x86_64
+          wget https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/win.zip
+          WIN_HASH=$(sha256sum $TEMP_DIR/win.zip | awk '{print $1}')
+          
+          # Create manifest
+          cat > bucket/klean.json << EOF
+          {
+              "version": "${VERSION}",
+              "description": "Safe, efficient CLI for cleaning development environments",
+              "homepage": "https://github.com/${{ github.repository }}",
+              "license": "MIT OR Apache-2.0",
+              "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip",
+              "hash": "${WIN_HASH}",
+              "bin": "klean.exe",
+              "checkver": "github",
+              "autoupdate": {
+                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/klean-v\$version-x86_64-pc-windows-msvc.zip"
+              }
+          }
+          EOF
+          
+          rm -rf $TEMP_DIR
+          
+          git config user.name "klean bot"
+          git config user.email "bot@klean.local"
+          git add bucket/klean.json
+          git commit -m "Update klean to ${VERSION}" || true
+          git push
+
+  validate-scoop:
+    name: Validate Scoop Manifest
+    runs-on: windows-latest
+    needs: update-scoop
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/scoop-bucket
+          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+
+      - name: Install Scoop
+        run: |
+          iwr -useb get.scoop.sh | iex
+          scoop bucket add klean "$(Get-Location)"
+
+      - name: Validate manifest
+        run: |
+          scoop search klean
+
+      - name: Test installation
+        run: |
+          scoop install klean
+          klean --version
