@@ -7,7 +7,7 @@
 #### Homebrew (Recommended)
 
 ```bash
-brew tap klean/klean
+brew tap danil0ws/klean
 brew install klean
 ```
 
@@ -36,7 +36,7 @@ From PPA or Packagecloud:
 
 ```bash
 # Add repository
-curl -s https://packagecloud.io/install/repositories/klean/klean/script.deb.sh | sudo bash
+curl -s https://packagecloud.io/install/repositories/danil0ws/klean/script.deb.sh | sudo bash
 
 # Install
 sudo apt-get install klean
@@ -54,7 +54,7 @@ From Copr or Packagecloud:
 
 ```bash
 # Add repository
-curl -s https://packagecloud.io/install/repositories/klean/klean/script.rpm.sh | sudo bash
+curl -s https://packagecloud.io/install/repositories/danil0ws/klean/script.rpm.sh | sudo bash
 
 # Install
 sudo dnf install klean
@@ -90,7 +90,7 @@ sudo pacman -S klean
 ```bash
 nix-shell -p klean
 # or
-nix profile install github:klean/klean
+nix profile install github:danil0ws/klean
 ```
 
 ### Windows
@@ -237,7 +237,7 @@ klean --help
 Build and run with Docker:
 
 ```bash
-docker run -v /path/to/project:/project ghcr.io/klean/klean:latest klean --path /project --dry-run
+docker run -v /path/to/project:/project ghcr.io/danil0ws/klean:latest klean --path /project --dry-run
 ```
 
 Or build locally:

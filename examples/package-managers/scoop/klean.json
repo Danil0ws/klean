@@ -7,7 +7,7 @@
     "hash": "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234",
     "bin": "klean.exe",
     "checkver": {
-        "url": "https://api.github.com/repos/klean/klean/releases/latest",
+        "url": "https://api.github.com/repos/danil0ws/klean/releases/latest",
         "jp": "$.tag_name",
         "re": "v([\\d.]+)"
     },
