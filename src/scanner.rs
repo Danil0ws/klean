@@ -66,11 +66,22 @@ impl ArtifactScanner {
         let mut artifacts = Vec::new();
         let patterns = &self.patterns;
 
-        for entry in WalkDir::new(&self.root).into_iter().filter_map(|e| e.ok()) {
+        let mut iter = WalkDir::new(&self.root).into_iter();
+
+        while let Some(entry_res) = iter.next() {
+            let entry = match entry_res {
+                Ok(e) => e,
+                Err(_) => continue,
+            };
+
             let path = entry.path();
 
             // Check if ignored
             if self.ignore_rules.is_ignored(path) {
+                // If this is a directory and ignored, skip its contents
+                if entry.file_type().is_dir() {
+                    iter.skip_current_dir();
+                }
                 continue;
             }
 
@@ -87,6 +98,7 @@ impl ArtifactScanner {
 
                 for p in &pattern.patterns {
                     if self.path_matches_pattern(path, p) {
+                        // Only consider directories as artifacts
                         if let Ok(metadata) = entry.metadata() {
                             if !metadata.is_dir() {
                                 continue;
@@ -114,6 +126,10 @@ impl ArtifactScanner {
                                 modified: entry.metadata().ok().and_then(|m| m.modified().ok()),
                                 is_safe: pattern.safe_to_delete,
                             });
+
+                            // Skip descending into this directory so we don't list nested
+                            // artifacts (e.g., node_modules/zod) as separate items.
+                            iter.skip_current_dir();
                         }
                     }
                 }
@@ -126,8 +142,12 @@ impl ArtifactScanner {
     fn path_matches_pattern(&self, path: &Path, pattern: &str) -> bool {
         if let Some(file_name) = path.file_name() {
             if let Some(name) = file_name.to_str() {
-                return name == pattern
-                    || path.to_string_lossy().contains(&format!("/{}", pattern));
+                // Match only when the path's final component equals the pattern
+                // (e.g. a directory literally named "node_modules").
+                // Avoid matching any path that merely contains the pattern string
+                // to prevent listing nested inner paths inside the artifact
+                // (like node_modules/zod/src) as separate artifacts.
+                return name == pattern;
             }
         }
         false

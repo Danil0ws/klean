@@ -41,7 +41,7 @@ Inspired by [npkill](https://github.com/voidcosmos/npkill), **klean** expands th
 
 **macOS (Homebrew)**
 ```bash
-brew tap danil0ws/klean
+brew tap klean-cli/klean
 brew install klean
 ```
 

@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
     Frame,
 };
 
@@ -26,6 +26,7 @@ pub struct TuiState {
     pub selected_artifacts: Vec<bool>,
     pub input_mode: InputMode,
     pub total_selected_size: u64,
+    pub list_state: ListState,
 }
 
 impl TuiState {
@@ -37,6 +38,11 @@ impl TuiState {
             selected_artifacts: vec![false; count],
             input_mode: InputMode::Normal,
             total_selected_size: 0,
+            list_state: {
+                let mut s = ListState::default();
+                s.select(Some(0));
+                s
+            },
         }
     }
 
@@ -70,12 +76,14 @@ impl TuiState {
     pub fn move_up(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
+            self.list_state.select(Some(self.selected));
         }
     }
 
     pub fn move_down(&mut self) {
         if self.selected < self.artifacts.len().saturating_sub(1) {
             self.selected += 1;
+            self.list_state.select(Some(self.selected));
         }
     }
 
@@ -92,7 +100,7 @@ impl TuiState {
 pub struct Tui;
 
 impl Tui {
-    pub fn render_list(f: &mut Frame, state: &TuiState) {
+    pub fn render_list(f: &mut Frame, state: &mut TuiState) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
@@ -109,20 +117,18 @@ impl Tui {
                 let is_highlighted = i == state.selected;
 
                 let prefix = if is_selected { "✓" } else { " " };
-                let label = format!(
-                    "{}  {} ({}) - {}",
-                    prefix,
-                    artifact.name,
-                    artifact.size_string(),
-                    artifact
-                        .relative_path(
-                            &state.artifacts[0]
-                                .path
-                                .parent()
-                                .unwrap_or_else(|| std::path::Path::new("."))
-                        )
-                        .display()
-                );
+                // Show the artifact name and size, and display the parent folder
+                // where the artifact (e.g. node_modules) was found. This makes the
+                // UI similar to tools like npkill which show the project folder
+                // containing the large artifact instead of listing many nested
+                // paths inside it.
+                let parent_display = artifact
+                    .path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .display();
+
+                let label = format!("{}  {} ({}) - {}", prefix, artifact.name, artifact.size_string(), parent_display);
 
                 let style = if is_highlighted {
                     Style::default()
@@ -140,14 +146,11 @@ impl Tui {
             .collect();
 
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .title("Artifacts Found")
-                    .borders(Borders::ALL),
-            )
+            .block(Block::default().title("Artifacts Found").borders(Borders::ALL))
             .style(Style::default());
 
-        f.render_widget(list, chunks[0]);
+        // Render statefully so the List scrolls when selection moves off-screen
+        f.render_stateful_widget(list, chunks[0], &mut state.list_state);
 
         // Status bar
         let status_text = vec![

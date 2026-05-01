@@ -32,7 +32,7 @@ impl InteractiveMode {
                     Tui::render_confirmation(f, &state);
                 }
                 _ => {
-                    Tui::render_list(f, &state);
+                    Tui::render_list(f, &mut state);
                 }
             })?;
 
