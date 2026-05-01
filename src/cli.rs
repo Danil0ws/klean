@@ -39,6 +39,10 @@ pub struct Cli {
     #[arg(long)]
     pub respect_gitignore: bool,
 
+    /// Allow scanning/cleaning in sensitive system paths (disabled by default)
+    #[arg(long)]
+    pub allow_system_paths: bool,
+
     /// Directory to move items to instead of deleting (backup)
     #[arg(long, value_name = "PATH")]
     pub backup_dir: Option<PathBuf>,

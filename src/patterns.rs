@@ -41,7 +41,6 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
             patterns: vec![
                 ".venv".to_string(),
                 "venv".to_string(),
-                "env".to_string(),
                 ".tox".to_string(),
             ],
             languages: vec!["Python".to_string()],
@@ -85,7 +84,7 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         // C#
         ArtifactPattern {
             name: "dotnet-build".to_string(),
-            patterns: vec!["bin".to_string(), "obj".to_string(), ".vs".to_string()],
+            patterns: vec!["obj".to_string(), ".vs".to_string(), "TestResults".to_string()],
             languages: vec!["C#".to_string(), "CSharp".to_string()],
             description: ".NET build artifacts".to_string(),
             safe_to_delete: true,
@@ -168,13 +167,6 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
             description: "Distribution build directory".to_string(),
             safe_to_delete: true,
         },
-        ArtifactPattern {
-            name: "out".to_string(),
-            patterns: vec!["out".to_string()],
-            languages: vec!["Java".to_string(), "JavaScript".to_string()],
-            description: "Output/build directory".to_string(),
-            safe_to_delete: true,
-        },
         // IDE and editor
         ArtifactPattern {
             name: "vscode-settings".to_string(),
@@ -186,9 +178,9 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         // General cache directories
         ArtifactPattern {
             name: "cache".to_string(),
-            patterns: vec![".cache".to_string(), "cache".to_string()],
+            patterns: vec![".cache".to_string()],
             languages: vec!["Generic".to_string()],
-            description: "Generic cache directories".to_string(),
+            description: "Generic hidden cache directory".to_string(),
             safe_to_delete: true,
         },
     ]

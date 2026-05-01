@@ -12,11 +12,16 @@ pub enum CleanerAction {
 pub struct Cleaner {
     action: CleanerAction,
     backup_dir: Option<PathBuf>,
+    allow_system_paths: bool,
 }
 
 impl Cleaner {
-    pub fn new(action: CleanerAction, backup_dir: Option<PathBuf>) -> Self {
-        Cleaner { action, backup_dir }
+    pub fn new(action: CleanerAction, backup_dir: Option<PathBuf>, allow_system_paths: bool) -> Self {
+        Cleaner {
+            action,
+            backup_dir,
+            allow_system_paths,
+        }
     }
 
     /// Check if an artifact is safe to delete (has marker files)
@@ -66,7 +71,40 @@ impl Cleaner {
             );
         }
 
+        if !self.allow_system_paths {
+            let sensitive = artifacts
+                .iter()
+                .filter(|artifact| Self::is_sensitive_system_path(&artifact.path))
+                .count();
+
+            if sensitive > 0 {
+                return Err(anyhow!(
+                    "Refusing to clean {} artifact(s) in sensitive system paths. Use --allow-system-paths to override.",
+                    sensitive
+                ));
+            }
+        }
+
         Ok(())
+    }
+
+    fn is_sensitive_system_path(path: &Path) -> bool {
+        const SENSITIVE_SYSTEM_PREFIXES: &[&str] = &[
+            "/System",
+            "/Library",
+            "/usr",
+            "/bin",
+            "/sbin",
+            "/private",
+            "/etc",
+            "/var",
+            "/Applications",
+        ];
+
+        let path_str = path.to_string_lossy();
+        SENSITIVE_SYSTEM_PREFIXES
+            .iter()
+            .any(|prefix| path_str == *prefix || path_str.starts_with(&format!("{}/", prefix)))
     }
 
     /// Clean artifacts (either delete or backup)
@@ -243,7 +281,7 @@ mod tests {
         // Create initial file
         fs::write(&path, "test").unwrap();
 
-        let cleaner = Cleaner::new(CleanerAction::Delete, None);
+        let cleaner = Cleaner::new(CleanerAction::Delete, None, false);
         let unique_path = cleaner.find_unique_path(&path).unwrap();
 
         assert_ne!(unique_path, path);
@@ -265,7 +303,7 @@ mod tests {
             is_safe: true,
         };
 
-        let cleaner = Cleaner::new(CleanerAction::Delete, None);
+        let cleaner = Cleaner::new(CleanerAction::Delete, None, false);
         assert!(cleaner.delete_artifact(&artifact).is_ok());
         assert!(!test_file.exists());
     }

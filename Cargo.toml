@@ -1,6 +1,6 @@
 [package]
 name = "klean"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["danil0ws"]
 description = "A safe, efficient, and extensible CLI tool for cleaning development environments"

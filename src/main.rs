@@ -60,6 +60,7 @@ fn main() -> Result<()> {
     let mut scanner = ArtifactScanner::new(root.clone(), ignore_rules, patterns);
 
     scanner = scanner.with_filter(cli.filter);
+    scanner = scanner.with_allow_system_paths(cli.allow_system_paths);
 
     if let Some(min_size_str) = &cli.min_size {
         let min_size = parse_size(min_size_str)?;
@@ -122,7 +123,7 @@ fn main() -> Result<()> {
                 CleanerAction::Delete
             };
 
-            let cleaner = Cleaner::new(action, final_config.backup_dir);
+            let cleaner = Cleaner::new(action, final_config.backup_dir, cli.allow_system_paths);
             cleaner.verify_safety(&to_clean)?;
 
             let result = cleaner.clean(to_clean, cli.dry_run)?;
@@ -158,6 +159,7 @@ fn show_config(cli: &Cli) -> Result<()> {
     println!("  Max size: {:?}", cli.max_size);
     println!("  Klignore: {:?}", cli.klignore);
     println!("  Respect gitignore: {}", cli.should_respect_gitignore());
+    println!("  Allow system paths: {}", cli.allow_system_paths);
     println!("  Backup dir: {:?}", cli.backup_dir);
     println!("  Mode: {:?}", cli.mode);
     Ok(())
