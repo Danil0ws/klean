@@ -433,7 +433,6 @@ All CI/CD workflows are in `.github/workflows/`:
 - **aur-update.yml** - Updates AUR package
 - **windows-packages.yml** - Updates Windows package managers
 
-For setup and configuration details, see [PACKAGE_MANAGERS.md](PACKAGE_MANAGERS.md).
 
 ### Composite Actions
 
