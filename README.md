@@ -60,7 +60,7 @@ git clone https://aur.archlinux.org/klean.git && cd klean && makepkg -si
 
 **Windows (Scoop)**
 ```powershell
-scoop bucket add klean https://github.com/danil0ws/scoop-bucket
+scoop bucket add klean https://github.com/klean-cli/scoop-bucket
 scoop install klean
 ```
 
@@ -76,7 +76,7 @@ winget install klean.klean
 
 **Cross-platform (Mise/asdf)**
 ```bash
-mise plugin add klean https://github.com/danil0ws/mise-klean
+mise plugin add klean https://github.com/klean-cli/mise-klean
 mise install klean@latest
 ```
 

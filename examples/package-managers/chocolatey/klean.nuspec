@@ -3,7 +3,7 @@
   <metadata>
     <id>klean</id>
     <version>1.0.0</version>
-    <packageSourceUrl>https://github.com/danil0ws/chocolatey-klean</packageSourceUrl>
+    <packageSourceUrl>https://github.com/klean-cli/chocolatey-klean</packageSourceUrl>
     <owners>klean</owners>
     <title>klean</title>
     <authors>klean contributors</authors>

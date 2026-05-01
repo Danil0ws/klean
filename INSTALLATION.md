@@ -98,7 +98,7 @@ nix profile install github:danil0ws/klean
 #### Scoop
 
 ```powershell
-scoop bucket add klean https://github.com/danil0ws/scoop-bucket
+scoop bucket add klean https://github.com/klean-cli/scoop-bucket
 scoop install klean
 ```
 
@@ -136,7 +136,7 @@ winget upgrade klean.klean
 Install Mise plugin:
 
 ```bash
-mise plugin add klean https://github.com/danil0ws/mise-klean
+mise plugin add klean https://github.com/klean-cli/mise-klean
 mise install klean@latest
 ```
 
