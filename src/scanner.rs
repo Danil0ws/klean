@@ -1,10 +1,11 @@
 use crate::ignore::IgnoreRules;
-use crate::patterns::{get_default_patterns, ArtifactPattern};
+use crate::patterns::ArtifactPattern;
 use anyhow::{Context, Result};
 use humansize::format_size;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct Artifact {
     pub path: PathBuf,

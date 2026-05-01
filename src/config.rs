@@ -85,6 +85,7 @@ impl KleanConfig {
     }
 
     /// Save config to file
+    #[allow(dead_code)]
     pub fn save(&self, path: &Path) -> Result<()> {
         let parent = path.parent().context("Invalid path")?;
         fs::create_dir_all(parent)
@@ -112,6 +113,7 @@ pub mod dirs {
         }
     }
 
+    #[allow(dead_code)]
     pub fn home_dir() -> Option<PathBuf> {
         std::env::var("HOME").ok().map(PathBuf::from)
     }

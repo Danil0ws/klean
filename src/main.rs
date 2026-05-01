@@ -8,7 +8,6 @@ mod tui;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use std::path::PathBuf;
 use tracing_subscriber;
 
 use cleaner::{Cleaner, CleanerAction};

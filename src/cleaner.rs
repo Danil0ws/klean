@@ -55,7 +55,10 @@ impl Cleaner {
         }
 
         // Warn about unsafe deletions
-        let unsafe_count = artifacts.iter().filter(|a| !a.is_safe).count();
+        let unsafe_count = artifacts
+            .iter()
+            .filter(|artifact| !self.is_safe_to_delete(artifact))
+            .count();
         if unsafe_count > 0 {
             eprintln!(
                 "⚠️  Warning: {} artifacts marked as potentially unsafe",

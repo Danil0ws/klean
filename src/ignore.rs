@@ -1,12 +1,11 @@
 use anyhow::{Context, Result};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Manages ignore rules from .klignore and optionally .gitignore files
 pub struct IgnoreRules {
     gitignore: Option<Gitignore>,
-    respect_gitignore: bool,
 }
 
 impl IgnoreRules {
@@ -26,7 +25,6 @@ impl IgnoreRules {
 
         Ok(IgnoreRules {
             gitignore,
-            respect_gitignore,
         })
     }
 
@@ -86,14 +84,15 @@ impl IgnoreRules {
         let gitignore = Self::build_gitignore_from_file(path)?;
         Ok(IgnoreRules {
             gitignore,
-            respect_gitignore: true,
         })
     }
 }
 
 /// Parse .klignore patterns manually (simpler approach without regex)
+#[allow(dead_code)]
 pub struct KlignoreParser;
 
+#[allow(dead_code)]
 impl KlignoreParser {
     /// Parse klignore patterns from file content
     pub fn parse(content: &str) -> Vec<String> {
@@ -154,6 +153,7 @@ impl KlignoreParser {
 }
 
 /// Simple wildcard matching
+#[allow(dead_code)]
 fn wildcard_match(text: &str, pattern: &str) -> bool {
     let mut text_chars = text.chars().peekable();
     let mut pattern_chars = pattern.chars().peekable();

@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// Represents a single artifact pattern with metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -201,6 +200,7 @@ pub fn get_default_patterns() -> Vec<ArtifactPattern> {
 }
 
 /// Get patterns by language
+#[allow(dead_code)]
 pub fn get_patterns_by_language(language: &str) -> Vec<ArtifactPattern> {
     DEFAULT_PATTERNS
         .iter()
@@ -212,11 +212,13 @@ pub fn get_patterns_by_language(language: &str) -> Vec<ArtifactPattern> {
 }
 
 /// Get pattern names
+#[allow(dead_code)]
 pub fn get_pattern_names() -> Vec<String> {
     DEFAULT_PATTERNS.iter().map(|p| p.name.clone()).collect()
 }
 
 /// Get patterns by name
+#[allow(dead_code)]
 pub fn get_patterns_by_name(names: &[String]) -> Vec<ArtifactPattern> {
     DEFAULT_PATTERNS
         .iter()

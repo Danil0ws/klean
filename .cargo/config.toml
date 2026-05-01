@@ -1,12 +1,3 @@
-[build]
-# Strip binaries in release builds
-strip = true
-
-# Optimize for size
-opt-level = "z"
-lto = true
-codegen-units = 1
-
 [profile.release]
 strip = true
 opt-level = "z"

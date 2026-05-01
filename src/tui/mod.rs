@@ -1,24 +1,17 @@
 use crate::scanner::Artifact;
-use anyhow::Result;
-use crossterm::{
-    event::{self, Event, KeyCode, KeyEvent},
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
-};
 use ratatui::{
-    backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph},
-    Frame, Terminal,
+    Frame,
 };
-use std::io::Stdout;
 
 pub mod interactive;
 
 pub use interactive::InteractiveMode;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum InputMode {
     Normal,
