@@ -124,12 +124,7 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          cd artifacts
-          for dir in klean-*; do
-            if [ -d "$dir" ]; then
-              cp "$dir"/* release-assets/ || true
-            fi
-          done
+          find artifacts -type f -exec cp {} release-assets/ \;
 
       - name: Generate checksums
         run: |
