@@ -1,7 +1,8 @@
 # Multi-stage build for minimal Docker image
 
 # Stage 1: Builder
-FROM rust:latest AS builder
+# Keep builder and runtime on the same Debian generation to avoid glibc mismatch.
+FROM rust:bookworm AS builder
 
 WORKDIR /build
 
