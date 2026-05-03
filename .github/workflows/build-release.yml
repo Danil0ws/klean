@@ -171,12 +171,6 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Trigger Homebrew update
-        run: |
-          gh workflow run homebrew-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Trigger AUR update
         run: |
           gh workflow run aur-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
@@ -195,3 +189,11 @@ jobs:
           gh workflow run linux-packages.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-homebrew:
+    name: Update Homebrew
+    needs: create-release
+    uses: ./.github/workflows/homebrew-update.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
