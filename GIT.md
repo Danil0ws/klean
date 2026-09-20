@@ -67,7 +67,7 @@ Then one commit per group (`git add <paths>` and repeat):
 
 | # | Commit | Paths |
 |---|--------|-------|
-| 1 | `fix(scanner): one directory per artifact, project-scoped deletion` | `src/scanner.rs src/ignore.rs src/patterns.rs src/config.rs src/cleaner.rs src/lib.rs tests/scanner_test.rs examples/klean.toml` |
+| 1 | `fix(scanner): one directory per artifact, project-scoped deletion` | `src/scanner.rs src/ignore.rs src/patterns.rs src/config.rs src/cleaner.rs src/lib.rs tests/scanner_test.rs tests/integration_test.rs examples/klean.toml` |
 | 2 | `feat(tui): column table, scrolling and terminal restore` | `src/tui/mod.rs src/tui/interactive.rs` |
 | 3 | `feat: plugins, stats, JSON output, web UI, watch mode and CI gate` | `src/plugins.rs src/history.rs src/web.rs src/watch.rs src/cli.rs src/main.rs tests/web_test.rs Cargo.toml Cargo.lock` |
 | 4 | `ci: reusable package workflows, working generators, ci.yml and installers` | `.github/ scripts/ examples/package-managers/ examples/ci/` |
