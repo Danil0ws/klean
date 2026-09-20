@@ -96,7 +96,9 @@ makepkg -si
 
 #### NixOS
 
-klean is not in nixpkgs yet; use `cargo install klean` or build from source.
+klean is not in nixpkgs yet; install from git
+(`cargo install --git https://github.com/danil0ws/klean --locked`) or build from
+source. Nix flakes are on the wishlist, not in the repo.
 
 ### Windows
 
@@ -153,15 +155,26 @@ asdf install klean latest
 asdf global klean latest
 ```
 
-#### Cargo (from crates.io)
+#### Cargo (from git)
+
+The crate is **not published on crates.io yet**, so `cargo install klean` fails
+with "could not find `klean` in registry `crates-io`". Install from the
+repository instead:
 
 ```bash
-cargo install klean
+cargo install --git https://github.com/danil0ws/klean --locked
 ```
 
 Update:
 ```bash
-cargo install klean --force
+cargo install --git https://github.com/danil0ws/klean --locked --force
+```
+
+Once the release workflow's `publish-crates-io` job has published a version, the
+short form works as expected:
+
+```bash
+cargo install klean
 ```
 
 ### From Source

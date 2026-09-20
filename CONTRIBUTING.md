@@ -45,7 +45,10 @@ cargo test
 
 ```bash
 cargo fmt
-cargo clippy
+cargo clippy --all-targets -- -D warnings
+cargo test --all-targets
+uv run --with pyyaml python scripts/check-packages.py   # package templates
+scripts/bump-version.sh --check                          # version consistency
 ```
 
 2. Write tests for new functionality

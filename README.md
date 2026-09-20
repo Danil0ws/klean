@@ -7,8 +7,11 @@ Inspired by [npkill](https://github.com/voidcosmos/npkill), **klean** expands th
 ## Features
 
 ### 🎯 Intelligent Multi-Language Scanning
-- Detects cleanup-safe directories for 20+ programming languages and frameworks
-- Supports Node.js, Python, Rust, Java, C#, C++, PHP, Ruby, Go, and more
+- Detects cleanup-safe directories for 20+ programming languages and frameworks:
+  49 pattern groups covering ~150 directory names, from `node_modules` and
+  `target` to `.turbo`, `.mypy_cache`, `Library` (Unity) and `.terraform`
+- Supports Node.js, Python, Rust, Java/Kotlin/Scala, .NET, C/C++, PHP, Ruby,
+  Elixir, Haskell, Zig, Nim, Flutter, Godot, Terraform and more
 - Identifies the owning project through marker files (package.json, Cargo.toml, pom.xml, ...)
 
 ### 🧱 One Directory per Artifact
@@ -103,7 +106,14 @@ cd klean
 cargo install --path .
 ```
 
-**From Cargo**
+**From Git (works today)**
+```bash
+cargo install --git https://github.com/danil0ws/klean --locked
+```
+
+**From crates.io** — only after the first publish. The crate is not on the
+registry yet, so today `cargo install klean` fails with
+`could not find 'klean' in registry 'crates-io'`:
 ```bash
 cargo install klean
 ```
@@ -442,10 +452,12 @@ fresh scan reports, and `KLEAN_TOKEN` is read when `--token` is absent.
 klean --path ~/work watch --interval 30m              # report only
 klean --path ~/work watch --interval 30m --auto-clean # delete (respects rules)
 klean --path ~/work watch --once --auto-clean         # one pass, for cron
+klean --path ~/work watch --once --fail-if-over 5GB   # cron that fails (exit 2)
 ```
 
 Project rules (`[[projects]]`) and `.klignore` apply: anything blocked is
-reported, never deleted.
+reported, never deleted. `--fail-if-over` works in `watch --once` too, so a cron
+job can alert on a budget breach without parsing the log.
 
 ### Statistics
 
@@ -492,6 +504,8 @@ OPTIONS:
     --no-gitignore                    Don't use .gitignore to prune traversal
     --allow-system-paths              Allow scanning sensitive system paths
     --backup-dir <PATH>               Move to backup dir instead of deleting
+    --trash                           Move to the klean trash (`klean undo` restores)
+    --empty                           trash: purge it now instead of after 7 days
     --json                            Machine-readable JSON on stdout
     --fail-if-over <SIZE>             Exit 2 when the total exceeds SIZE
     --host <HOST>                     serve: address to bind (default 127.0.0.1)
@@ -514,6 +528,8 @@ MODES:
     stats                             Space freed over time
     watch                             Rescan on an interval
     plugins                           List loaded pattern plugins
+    undo                              Restore the last trashed items
+    trash                             Show the trash (with `--empty`, purge it)
 
 EXIT CODES:
     0   success
@@ -523,13 +539,21 @@ EXIT CODES:
 
 ## Performance
 
-On a typical development machine:
+Measured on the machine this repository is developed on (macOS Intel, SSD,
+release build):
 
-- Scanning 500+ directories: ~500ms
-- Calculating sizes: ~1-2s
-- Interactive UI: Instant response
+| tree | artifacts | total | `klean list` |
+| ---- | --------- | ----- | ------------ |
+| `~/Dev/klean` (this repo) | 1 | 0.1 GiB | 0.4 s |
+| `~/Dev` (23 projects) | 69 | 7.9 GiB | 14.6 s |
+| `~` (whole home) | — | — | 135 s |
 
-Performance scales well with SSD storage and decreases on slower storage.
+The walk is not what costs: `calculate_dir_size` reads every file inside every
+artifact (`node_modules`, `target`, `.venv` hold hundreds of thousands of them)
+and it is single threaded, so time tracks the *content* of the artifacts, not the
+number of directories. Cleaning one `node_modules` stays interactive; scanning a
+whole home directory is a coffee break. Narrow the scan with `--filter`,
+`--min-size`/`--max-size` or `[[projects]]` when you only care about part of it.
 
 ## Security & Safety
 
@@ -545,8 +569,8 @@ Performance scales well with SSD storage and decreases on slower storage.
    symlink (pnpm workspaces, Nix, shared caches) is skipped, and a directory that
    is itself a link is never a target — klean deletes the real directory it
    matched, so nothing outside the scan tree can be removed through a link.
-   Point `--path` at the real location (or use `klean explain <path>`) when a
-   link hides an artifact you wanted.
+   Point `--path` at the real location when a link hides an artifact you wanted —
+   `klean -p <real-dir> list` shows it.
 9. **Sensitive paths**: `/`, `/etc`, `/usr`, `/var`, `/tmp`, `/System` and
    friends are skipped unless the scan root is already inside them, and the
    cleaner re-checks before deleting.
@@ -566,7 +590,8 @@ klean/
 │   ├── ignore.rs        # .klignore (protection) / .gitignore (pruning)
 │   ├── scanner.rs       # Non-recursive scanning, project attribution
 │   ├── config.rs        # klean.toml loading and per-project rules
-│   ├── cleaner.rs       # Safe deletion/backup and safety checks
+│   ├── cleaner.rs       # Safe deletion/backup/trash and safety checks
+│   ├── trash.rs         # Klean trash + `klean undo` (journal per session)
 │   ├── history.rs       # Space-saved history (klean stats)
 │   ├── watch.rs         # Interval rescan / auto-clean
 │   ├── web.rs           # Web UI + JSON API (klean serve)
@@ -576,7 +601,8 @@ klean/
 ├── scripts/
 │   ├── install.sh       # curl | sh installer (checksum verified)
 │   ├── install.ps1      # PowerShell installer
-│   └── check-packages.py # Validates generated package files in CI
+│   ├── check-packages.py # Validates generated package files in CI
+│   └── bump-version.sh  # One-command version bump (`--check` guards CI)
 ├── examples/
 │   ├── package-managers/ # Homebrew/Scoop/Chocolatey/AUR/mise templates
 │   └── ci/klean-budget.yml # Ready-made CI job with a size budget
@@ -707,8 +733,16 @@ The original six items all shipped:
 - [x] **Watch mode (auto-clean on schedule)** — `klean watch --interval 30m`
   (report) or `--auto-clean` (act), `--once` for cron/CI
 
-Ideas after that: per-project retention rules, a `klean doctor`, and metrics
-export (Prometheus/OpenTelemetry) on top of the history file.
+Shipped after that list: undo (`--trash`, `klean undo`, `klean trash`), the
+catalogue expansion to 49 pattern groups, the scanning loading screen, and mouse
+wheel/paging in the UI.
+
+Ideas after that: per-project retention rules, a `klean doctor` (and
+`klean explain <path>` for "why was this not detected?"), shell completions and
+man pages, `--trash` everywhere a delete happens, and metrics export
+(Prometheus/OpenTelemetry) on top of the history file. The measured numbers in
+[Performance](#performance) name the other known gap: size calculation is still
+single threaded.
 
 ## Troubleshooting
 
@@ -716,8 +750,14 @@ export (Prometheus/OpenTelemetry) on top of the history file.
 
 1. Check your current directory: `pwd`
 2. Try specifying a path: `klean --path ~/projects`
-3. Check .klignore rules: `cat .klignore`
+3. Check .klignore rules: `cat .klignore` — it is a **protection** list, so
+   anything it matches is invisible on purpose (anchors resolve against the scan
+   root, not the file or your cwd)
 4. Verify patterns exist: `klean --show-config`
+5. Is the artifact a symlink? Links are not followed, so a linked `node_modules`
+   is skipped: point `--path` at the real directory
+6. Running an old binary? An installed release can be behind the catalogue:
+   `klean --version`, then `cargo install --path . --locked --force`
 
 ### "Permission denied" errors
 

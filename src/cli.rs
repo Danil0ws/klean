@@ -57,7 +57,7 @@ pub struct Cli {
     pub mode: Option<Mode>,
 
     /// Verbosity level (-v, -vv, -vvv)
-    #[arg(short, action = clap::ArgAction::Count)]
+    #[arg(short, long, action = clap::ArgAction::Count)]
     pub verbose: u8,
 
     /// Suppress all output
