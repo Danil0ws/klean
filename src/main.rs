@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use indicatif::{ProgressBar, ProgressStyle};
 use klean::cleaner::{CleanResult, Cleaner, CleanerAction};
 use klean::cli::{Cli, Mode};
 use klean::config::KleanConfig;
@@ -8,11 +9,12 @@ use klean::ignore::IgnoreRules;
 use klean::patterns::get_default_patterns;
 use klean::plugins;
 use klean::scanner::{parse_size, Artifact, ArtifactScanner, ProjectGroup, ScanOutcome};
-use klean::tui::InteractiveMode;
+use klean::tui::{CleanContext, InteractiveMode};
 use klean::watch::{self, WatchOptions};
 use klean::web::{self, WebConfig};
 use std::io::IsTerminal;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Exit code used when --fail-if-over is exceeded (CI gate). 1 stays "error".
 const EXIT_OVER_LIMIT: i32 = 2;
@@ -123,12 +125,48 @@ fn main() -> Result<()> {
         );
     }
 
-    // Scan for artifacts
-    if !cli.quiet && !cli.json {
-        println!("🔍 Scanning {}...", root.display());
+    // Scan for artifacts, naming the directory being read while it happens.
+    let is_tty = std::io::stdout().is_terminal();
+    let spinner = if is_tty && !cli.quiet && !cli.json {
+        let bar = ProgressBar::new_spinner();
+        bar.set_style(
+            ProgressStyle::default_spinner()
+                .template("{spinner:.cyan} lendo {msg}")
+                .context("Failed to set spinner style")?,
+        );
+        bar.enable_steady_tick(std::time::Duration::from_millis(90));
+        bar.set_message(root.display().to_string());
+        Some(bar)
+    } else {
+        if !cli.quiet && !cli.json {
+            println!("🔍 Scanning {}...", root.display());
+        }
+        None
+    };
+
+    if let Some(bar) = spinner.clone() {
+        let base = root.clone();
+        let clock = std::time::Instant::now();
+        let last = AtomicU64::new(0);
+        scanner = scanner.with_progress(Box::new(move |path: &Path| {
+            // ponytail: throttle the redraw; without it a big tree spends more
+            // time formatting the line than walking it.
+            let now = clock.elapsed().as_millis() as u64;
+            let previous = last.load(Ordering::Relaxed);
+            if now.saturating_sub(previous) < 80 {
+                return;
+            }
+            last.store(now, Ordering::Relaxed);
+            let shown = path.strip_prefix(&base).unwrap_or(path);
+            bar.set_message(shown.display().to_string());
+        }));
     }
 
     let outcome = scanner.scan()?;
+
+    if let Some(bar) = &spinner {
+        bar.finish_and_clear();
+    }
 
     let over_limit = match &cli.fail_if_over {
         Some(text) => {
@@ -200,7 +238,6 @@ fn main() -> Result<()> {
     }
 
     // No TTY (pipe, CI, cron): the interactive UI cannot run.
-    let is_tty = std::io::stdout().is_terminal();
     let mode = if matches!(mode, Mode::Interactive) && !is_tty {
         Mode::List
     } else {
@@ -209,8 +246,25 @@ fn main() -> Result<()> {
 
     let selected_artifacts = match mode {
         Mode::Interactive if !cli.yes && !cli.dry_run => {
-            // Run interactive TUI
-            InteractiveMode::run(artifacts.clone(), root.clone())?
+            // The TUI cleans on its own, so the numbers stay on the screen
+            // instead of scrolling away when it closes.
+            let report = InteractiveMode::run(
+                artifacts.clone(),
+                CleanContext {
+                    backup_dir: final_config.backup_dir.clone(),
+                    root: root.clone(),
+                    allow_system_paths: cli.allow_system_paths,
+                },
+            )?;
+
+            if !cli.quiet && report.cleaned > 0 {
+                println!(
+                    "✓ {} liberados em {} item(ns)",
+                    humansize::format_size(report.freed, humansize::BINARY),
+                    report.cleaned
+                );
+            }
+            None
         }
         Mode::List => {
             if !cli.json {

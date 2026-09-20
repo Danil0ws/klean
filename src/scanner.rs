@@ -179,6 +179,9 @@ impl ScanOutcome {
     }
 }
 
+/// Called with every directory the walk visits (drives the CLI spinner).
+pub type ProgressFn = Box<dyn Fn(&Path) + Send + Sync>;
+
 pub struct ArtifactScanner {
     root: PathBuf,
     ignore_rules: IgnoreRules,
@@ -188,6 +191,8 @@ pub struct ArtifactScanner {
     max_size: Option<u64>,
     allow_system_paths: bool,
     project_rules: Vec<ProjectRule>,
+    /// Called with every directory the walk visits (drives the CLI spinner).
+    progress: Option<ProgressFn>,
 }
 
 impl ArtifactScanner {
@@ -201,6 +206,7 @@ impl ArtifactScanner {
             max_size: None,
             allow_system_paths: false,
             project_rules: Vec::new(),
+            progress: None,
         }
     }
 
@@ -222,6 +228,12 @@ impl ArtifactScanner {
 
     pub fn with_project_rules(mut self, rules: Vec<ProjectRule>) -> Self {
         self.project_rules = rules;
+        self
+    }
+
+    /// Report every directory the walk enters, for a live progress indicator.
+    pub fn with_progress(mut self, progress: ProgressFn) -> Self {
+        self.progress = Some(progress);
         self
     }
 
@@ -268,6 +280,10 @@ impl ArtifactScanner {
         blocked: &mut Vec<Blocked>,
     ) {
         for path in dirs {
+            if let Some(progress) = &self.progress {
+                progress(path);
+            }
+
             let name = match path.file_name().and_then(|n| n.to_str()) {
                 Some(n) => n.to_string(),
                 None => continue,

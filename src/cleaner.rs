@@ -14,6 +14,9 @@ pub struct Cleaner {
     backup_dir: Option<PathBuf>,
     allow_system_paths: bool,
     root: Option<PathBuf>,
+    /// No progress bar and no warnings on stdout/stderr: the TUI owns the
+    /// screen, and indicatif drawing over it leaves the bar printed on top.
+    silent: bool,
 }
 
 impl Cleaner {
@@ -27,6 +30,7 @@ impl Cleaner {
             backup_dir,
             allow_system_paths,
             root: None,
+            silent: false,
         }
     }
 
@@ -37,6 +41,12 @@ impl Cleaner {
     /// then refuses to clean all of them.
     pub fn with_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.root = Some(root.into());
+        self
+    }
+
+    /// Keep the terminal alone (progress bar and warnings off).
+    pub fn with_silent(mut self, silent: bool) -> Self {
+        self.silent = silent;
         self
     }
 
@@ -101,7 +111,7 @@ impl Cleaner {
             .iter()
             .filter(|artifact| !self.is_safe_to_delete(artifact))
             .count();
-        if unsafe_count > 0 {
+        if unsafe_count > 0 && !self.silent {
             eprintln!(
                 "⚠️  Warning: {} artifacts marked as potentially unsafe",
                 unsafe_count
@@ -128,12 +138,18 @@ impl Cleaner {
     /// Clean artifacts (either delete or backup)
     pub fn clean(&self, artifacts: Vec<Artifact>, dry_run: bool) -> Result<CleanResult> {
         let total_items = artifacts.len();
-        let pb = ProgressBar::new(total_items as u64);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("[{bar:40.cyan/blue}] {pos}/{len} {msg}")
-                .context("Failed to set progress style")?,
-        );
+        let pb = if self.silent {
+            ProgressBar::hidden()
+        } else {
+            ProgressBar::new(total_items as u64)
+        };
+        if !self.silent {
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("[{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                    .context("Failed to set progress style")?,
+            );
+        }
 
         let mut result = CleanResult {
             deleted: 0,

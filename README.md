@@ -127,12 +127,23 @@ klean --path ~/projects
 ```
 
 **Keyboard Controls:**
-- `↑↓` - Navigate
+- `↑↓` / mouse wheel - Navigate one row
+- `PgUp` / `PgDn` - Move one screen
+- `Home` / `End` - Jump to first/last
 - `Space` - Select/deselect
 - `A` - Select all
 - `D` - Deselect all
-- `Enter` - Clean selected
+- `Enter` - Clean selected (confirms, then shows the summary in place)
 - `Q` - Quit
+
+The UI does not close after cleaning: the summary stays on screen, the deleted
+rows leave the list, the freed total accumulates in the footer, and `Q` exits
+when you are done. While scanning, a spinner names the directory being read.
+
+Every release also carries a single version-bump command:
+`scripts/bump-version.sh <x.y.z>` rewrites `Cargo.toml`, `Cargo.lock`, the
+package-manager manifests, the installers and the docs; `--check` fails when a
+copy drifted (CI runs it).
 
 ### Dry Run (Preview)
 

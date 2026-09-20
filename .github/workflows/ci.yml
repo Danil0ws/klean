@@ -64,3 +64,8 @@ jobs:
       # Scoop manifest, winget manifests and Homebrew formula.
       - name: Validate generated package files
         run: python3 scripts/check-packages.py
+
+      # Cargo.toml is the source of truth: a manifest left on an older version
+      # publishes a package that downloads the wrong release.
+      - name: Version matches everywhere
+        run: scripts/bump-version.sh --check

@@ -1,3 +1,4 @@
+use crate::cleaner::{CleanResult, CleanerAction};
 use crate::scanner::Artifact;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -6,7 +7,7 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Paragraph, Row, Table, TableState},
     Frame,
 };
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub mod interactive;
 
@@ -18,7 +19,38 @@ pub enum InputMode {
     Normal,
     Selection,
     Confirmation,
+    /// Last clean result is on screen; any key returns to the list.
+    Summary,
     Exiting,
+}
+
+/// Everything the TUI needs to clean without leaving the screen.
+pub struct CleanContext {
+    pub backup_dir: Option<PathBuf>,
+    pub root: PathBuf,
+    pub allow_system_paths: bool,
+}
+
+impl CleanContext {
+    /// Backup when a backup directory is configured, delete otherwise — the
+    /// same rule the CLI path uses.
+    pub fn action(&self) -> CleanerAction {
+        if self.backup_dir.is_some() {
+            CleanerAction::Backup
+        } else {
+            CleanerAction::Delete
+        }
+    }
+}
+
+/// Numbers of one clean run, kept on screen until the user dismisses them.
+#[derive(Debug, Clone)]
+pub struct LastResult {
+    pub deleted: usize,
+    pub backed_up: usize,
+    pub failed: usize,
+    pub freed: u64,
+    pub errors: Vec<String>,
 }
 
 pub struct TuiState {
@@ -33,6 +65,13 @@ pub struct TuiState {
     /// Rows that fit in the table; refreshed on every render so paging moves
     /// exactly one screenful.
     pub page_size: usize,
+    /// What the last clean run freed, shown over the list.
+    pub last_result: Option<LastResult>,
+    /// Bytes freed and items removed since the TUI opened.
+    pub session_freed: u64,
+    pub session_cleaned: usize,
+    /// A clean that could not even start (safety refusal, IO error).
+    pub notice: Option<String>,
 }
 
 impl TuiState {
@@ -49,6 +88,10 @@ impl TuiState {
             table_state,
             root,
             page_size: 10,
+            last_result: None,
+            session_freed: 0,
+            session_cleaned: 0,
+            notice: None,
         }
     }
 
@@ -154,16 +197,48 @@ impl TuiState {
             .map(|(_, a)| a.clone())
             .collect()
     }
+
+    /// Fold a finished clean run back into the screen: whatever is still on
+    /// disk failed, so it stays listed (and selected) for a retry, and the
+    /// freed total accumulates for the rest of the session.
+    pub fn apply_clean_result(&mut self, result: &CleanResult) {
+        self.artifacts.retain(|artifact| artifact.path.exists());
+        let count = self.artifacts.len();
+        self.selected_artifacts = vec![true; count];
+        self.selected = self.selected.min(count.saturating_sub(1));
+        if count == 0 {
+            self.table_state.select(None);
+        } else {
+            self.sync_selection();
+        }
+        self.total_selected_size = self.artifacts.iter().map(|a| a.size).sum();
+        self.session_freed += result.total_size_freed;
+        self.session_cleaned += result.deleted + result.backed_up;
+        self.notice = None;
+        self.last_result = Some(LastResult {
+            deleted: result.deleted,
+            backed_up: result.backed_up,
+            failed: result.failed,
+            freed: result.total_size_freed,
+            errors: result.errors.clone(),
+        });
+        self.input_mode = InputMode::Summary;
+    }
 }
 
 pub struct Tui;
 
 impl Tui {
     pub fn render_list(f: &mut Frame, state: &mut TuiState) {
+        // The footer gains a line per extra message (session total, notice).
+        let extra_lines =
+            usize::from(state.session_cleaned > 0) + usize::from(state.notice.is_some());
+        let footer_height = (4 + extra_lines) as u16;
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .margin(1)
-            .constraints([Constraint::Min(3), Constraint::Length(4)])
+            .constraints([Constraint::Min(3), Constraint::Length(footer_height)])
             .split(f.area());
 
         // Borders (2) + header (1) are not rows: keep the offset inside the rows
@@ -259,7 +334,18 @@ impl Tui {
 
         f.render_stateful_widget(table, chunks[0], &mut state.table_state);
 
-        let status_text = vec![
+        if state.artifacts.is_empty() {
+            let inner = Block::default().borders(Borders::ALL).inner(chunks[0]);
+            f.render_widget(Clear, inner);
+            f.render_widget(
+                Paragraph::new("✨ nada mais para limpar — Q para sair")
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(Color::Green)),
+                inner,
+            );
+        }
+
+        let mut status_text = vec![
             Line::from(vec![
                 Span::styled("↑↓ / wheel", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" move  "),
@@ -285,6 +371,24 @@ impl Tui {
                 humansize::format_size(state.total_selected_size, humansize::BINARY)
             )),
         ];
+
+        if state.session_cleaned > 0 {
+            status_text.push(Line::from(Span::styled(
+                format!(
+                    "✓ {} libertados nesta sessão ({} itens)",
+                    humansize::format_size(state.session_freed, humansize::BINARY),
+                    state.session_cleaned
+                ),
+                Style::default().fg(Color::Green),
+            )));
+        }
+
+        if let Some(notice) = &state.notice {
+            status_text.push(Line::from(Span::styled(
+                notice.clone(),
+                Style::default().fg(Color::Red),
+            )));
+        }
 
         let status = Paragraph::new(status_text)
             .block(Block::default().borders(Borders::ALL))
@@ -334,6 +438,75 @@ impl Tui {
         f.render_widget(Clear, dialog_area);
         f.render_widget(dialog, dialog_area);
     }
+
+    /// What the run just freed, on screen until the user presses a key.
+    pub fn render_summary(f: &mut Frame, state: &TuiState) {
+        let Some(result) = &state.last_result else {
+            return;
+        };
+
+        let area = f.area();
+        let width = 64.min(area.width.saturating_sub(2)).max(24);
+        let height = 13.min(area.height.saturating_sub(2)).max(7);
+        let dialog_area = centered_rect(area, width, height);
+
+        let mut lines = vec![
+            Line::from(Span::styled(
+                "limpeza concluída",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            Line::from(format!("Apagados        {}", result.deleted)),
+            Line::from(format!("Backups         {}", result.backed_up)),
+            Line::from(format!("Falhas          {}", result.failed)),
+            Line::from(format!(
+                "Espaço liberado {}",
+                humansize::format_size(result.freed, humansize::BINARY)
+            )),
+            Line::from(Span::styled(
+                format!(
+                    "Total da sessão {}",
+                    humansize::format_size(state.session_freed, humansize::BINARY)
+                ),
+                Style::default().add_modifier(Modifier::BOLD),
+            )),
+        ];
+
+        if let Some(error) = result.errors.first() {
+            lines.push(Line::from(Span::styled(
+                truncate_middle(error, width.saturating_sub(4) as usize),
+                Style::default().fg(Color::Red),
+            )));
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::from("qualquer tecla volta para a lista — Q sai"));
+
+        let dialog = Paragraph::new(lines)
+            .block(
+                Block::default()
+                    .title("RESUMO")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::Green)),
+            )
+            .alignment(Alignment::Center);
+
+        f.render_widget(Clear, dialog_area);
+        f.render_widget(dialog, dialog_area);
+    }
+}
+
+/// Keep both ends of a long path so the error stays identifiable.
+fn truncate_middle(text: &str, max: usize) -> String {
+    if max < 8 || text.chars().count() <= max {
+        return text.to_string();
+    }
+    let keep = (max - 1) / 2;
+    let head: String = text.chars().take(keep).collect();
+    let tail: String = text.chars().skip(text.chars().count() - keep).collect();
+    format!("{head}…{tail}")
 }
 
 fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
@@ -408,5 +581,50 @@ mod tests {
         s.move_page(true);
         s.move_to_last();
         assert_eq!(s.selected, 0);
+    }
+
+    #[test]
+    fn a_clean_keeps_only_the_failures_and_accumulates_the_session() {
+        let base = std::env::temp_dir().join("klean-tui-apply");
+        let _ = std::fs::remove_dir_all(&base);
+        let gone = base.join("gone/node_modules");
+        let kept = base.join("kept/node_modules");
+        std::fs::create_dir_all(&kept).unwrap();
+
+        let mut s = TuiState::new(vec![artifact_at(&gone), artifact_at(&kept)], base.clone());
+        s.select_all();
+
+        let result = CleanResult {
+            deleted: 1,
+            backed_up: 0,
+            failed: 1,
+            total_size_freed: 4096,
+            errors: vec![format!("{}: boom", kept.display())],
+        };
+        s.apply_clean_result(&result);
+
+        assert_eq!(s.artifacts.len(), 1);
+        assert_eq!(s.artifacts[0].path, kept);
+        assert!(s.selected_artifacts[0], "a falha fica marcada para retry");
+        assert_eq!(s.selected, 0);
+        assert_eq!(s.total_selected_size, 1);
+        assert_eq!(s.session_freed, 4096);
+        assert_eq!(s.session_cleaned, 1);
+        assert_eq!(s.input_mode, InputMode::Summary);
+        assert_eq!(s.last_result.as_ref().map(|r| r.failed), Some(1));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    fn artifact_at(path: &Path) -> Artifact {
+        Artifact {
+            path: path.to_path_buf(),
+            size: 1,
+            name: "node_modules".to_string(),
+            pattern_name: "node_modules".to_string(),
+            modified: None,
+            is_safe: true,
+            project: path.parent().unwrap_or(path).to_path_buf(),
+        }
     }
 }

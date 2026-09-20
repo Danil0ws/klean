@@ -2,7 +2,7 @@
 # Kept in sync with .github/workflows/aur-update.yml, which regenerates this
 # file plus .SRCINFO on every release.
 pkgname=klean
-pkgver=1.0.0
+pkgver=1.1.0
 pkgrel=1
 pkgdesc="Safe, efficient CLI for cleaning development environments"
 arch=('x86_64' 'aarch64')
