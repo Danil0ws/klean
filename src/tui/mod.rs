@@ -30,6 +30,9 @@ pub struct TuiState {
     pub table_state: TableState,
     /// Root used to shorten displayed paths.
     pub root: std::path::PathBuf,
+    /// Rows that fit in the table; refreshed on every render so paging moves
+    /// exactly one screenful.
+    pub page_size: usize,
 }
 
 impl TuiState {
@@ -45,6 +48,7 @@ impl TuiState {
             total_selected_size: 0,
             table_state,
             root,
+            page_size: 10,
         }
     }
 
@@ -102,18 +106,44 @@ impl TuiState {
             .sum();
     }
 
+    fn sync_selection(&mut self) {
+        self.table_state.select(Some(self.selected));
+    }
+
     pub fn move_up(&mut self) {
         if self.selected > 0 {
             self.selected -= 1;
-            self.table_state.select(Some(self.selected));
+            self.sync_selection();
         }
     }
 
     pub fn move_down(&mut self) {
         if self.selected < self.artifacts.len().saturating_sub(1) {
             self.selected += 1;
-            self.table_state.select(Some(self.selected));
+            self.sync_selection();
         }
+    }
+
+    /// One screenful up/down: PgUp/PgDn and the mouse wheel.
+    pub fn move_page(&mut self, down: bool) {
+        let last = self.artifacts.len().saturating_sub(1);
+        let step = self.page_size.max(1);
+        self.selected = if down {
+            (self.selected + step).min(last)
+        } else {
+            self.selected.saturating_sub(step)
+        };
+        self.sync_selection();
+    }
+
+    pub fn move_to_first(&mut self) {
+        self.selected = 0;
+        self.sync_selection();
+    }
+
+    pub fn move_to_last(&mut self) {
+        self.selected = self.artifacts.len().saturating_sub(1);
+        self.sync_selection();
     }
 
     pub fn get_selected_artifacts(&self) -> Vec<Artifact> {
@@ -135,6 +165,20 @@ impl Tui {
             .margin(1)
             .constraints([Constraint::Min(3), Constraint::Length(4)])
             .split(f.area());
+
+        // Borders (2) + header (1) are not rows: keep the offset inside the rows
+        // that are really visible, so paging lands on whole screens and the
+        // highlight never hides behind the footer.
+        let visible = usize::from(chunks[0].height.saturating_sub(3)).max(1);
+        state.page_size = visible;
+        if state.artifacts.len() > visible {
+            let offset = state.table_state.offset_mut();
+            if state.selected < *offset {
+                *offset = state.selected;
+            } else if state.selected >= *offset + visible {
+                *offset = state.selected + 1 - visible;
+            }
+        }
 
         let header = Row::new(vec![
             Cell::from(" "),
@@ -217,8 +261,12 @@ impl Tui {
 
         let status_text = vec![
             Line::from(vec![
-                Span::styled("↑↓", Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled("↑↓ / wheel", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" move  "),
+                Span::styled("PgUp PgDn", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" page  "),
+                Span::styled("Home End", Style::default().add_modifier(Modifier::BOLD)),
+                Span::raw(" ends  "),
                 Span::styled("Space", Style::default().add_modifier(Modifier::BOLD)),
                 Span::raw(" toggle  "),
                 Span::styled("A", Style::default().add_modifier(Modifier::BOLD)),
@@ -294,5 +342,71 @@ fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
         y: area.y + (area.height.saturating_sub(height)) / 2,
         width,
         height,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn state(count: usize) -> TuiState {
+        let artifacts = (0..count)
+            .map(|i| Artifact {
+                path: std::path::PathBuf::from(format!("/tmp/a{i}/node_modules")),
+                size: 1,
+                name: "node_modules".to_string(),
+                pattern_name: "node_modules".to_string(),
+                modified: None,
+                is_safe: true,
+                project: std::path::PathBuf::from(format!("/tmp/a{i}")),
+            })
+            .collect();
+        TuiState::new(artifacts, std::path::PathBuf::from("/tmp"))
+    }
+
+    #[test]
+    fn paging_moves_one_screenful_and_clamps() {
+        let mut s = state(30);
+        s.page_size = 10;
+
+        s.move_page(true);
+        assert_eq!(s.selected, 10);
+        assert_eq!(s.table_state.selected(), Some(10));
+
+        s.move_page(true);
+        assert_eq!(s.selected, 20);
+
+        // clamping at the last row
+        s.move_page(true);
+        assert_eq!(s.selected, 29);
+        s.move_page(true);
+        assert_eq!(s.selected, 29);
+
+        s.move_page(false);
+        assert_eq!(s.selected, 19);
+        s.move_page(false);
+        s.move_page(false);
+        assert_eq!(s.selected, 0);
+        s.move_page(false);
+        assert_eq!(s.selected, 0);
+    }
+
+    #[test]
+    fn home_and_end_jump_to_the_bounds() {
+        let mut s = state(30);
+        s.move_to_last();
+        assert_eq!(s.selected, 29);
+        s.move_to_first();
+        assert_eq!(s.selected, 0);
+        assert_eq!(s.table_state.selected(), Some(0));
+    }
+
+    #[test]
+    fn movement_on_an_empty_list_is_a_no_op() {
+        let mut s = state(0);
+        s.move_down();
+        s.move_page(true);
+        s.move_to_last();
+        assert_eq!(s.selected, 0);
     }
 }
