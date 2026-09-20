@@ -11,173 +11,406 @@ pub struct ArtifactPattern {
     pub safe_to_delete: bool,
 }
 
+/// Every pattern is a *directory name* (exact or `*`/`?` glob): klean reports a
+/// matched directory once and never descends into it.
+///
+/// `safe_to_delete: false` marks names that are usually regenerable but could
+/// hold work someone cares about (`out`, `bin`, `Library`, `mlruns`): they are
+/// still listed and can be cleaned, with a warning.
 pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
+    let pattern = |name: &str,
+                   patterns: &[&str],
+                   languages: &[&str],
+                   description: &str,
+                   safe_to_delete: bool| ArtifactPattern {
+        name: name.to_string(),
+        patterns: patterns.iter().map(|p| p.to_string()).collect(),
+        languages: languages.iter().map(|l| l.to_string()).collect(),
+        description: description.to_string(),
+        safe_to_delete,
+    };
+
     vec![
-        // Node.js
-        ArtifactPattern {
-            name: "node_modules".to_string(),
-            patterns: vec!["node_modules".to_string()],
-            languages: vec!["JavaScript".to_string(), "TypeScript".to_string()],
-            description: "Node.js dependencies directory".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "npm-cache".to_string(),
-            patterns: vec![".npm".to_string()],
-            languages: vec!["JavaScript".to_string()],
-            description: "NPM cache directory".to_string(),
-            safe_to_delete: true,
-        },
-        // Python
-        ArtifactPattern {
-            name: "pycache".to_string(),
-            patterns: vec!["__pycache__".to_string()],
-            languages: vec!["Python".to_string()],
-            description: "Python bytecode cache".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "python-venv".to_string(),
-            patterns: vec![".venv".to_string(), "venv".to_string(), ".tox".to_string()],
-            languages: vec!["Python".to_string()],
-            description: "Python virtual environments".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "python-dist".to_string(),
-            patterns: vec![
-                "*.egg-info".to_string(),
-                "dist".to_string(),
-                "build".to_string(),
+        // ---------- JavaScript / TypeScript ----------
+        pattern(
+            "node_modules",
+            &["node_modules"],
+            &["JavaScript", "TypeScript"],
+            "Node.js dependencies",
+            true,
+        ),
+        pattern("npm-cache", &[".npm"], &["JavaScript"], "npm cache", true),
+        pattern(
+            "pnpm-store",
+            &[".pnpm-store"],
+            &["JavaScript", "TypeScript"],
+            "pnpm content-addressable store",
+            true,
+        ),
+        pattern(
+            "bower",
+            &["bower_components"],
+            &["JavaScript"],
+            "Bower dependencies",
+            true,
+        ),
+        pattern(
+            "nextjs-build",
+            &[".next"],
+            &["JavaScript", "TypeScript"],
+            "Next.js build output",
+            true,
+        ),
+        pattern(
+            "nuxt-build",
+            &[".nuxt", ".output"],
+            &["JavaScript", "Vue"],
+            "Nuxt build output",
+            true,
+        ),
+        pattern(
+            "svelte-kit",
+            &[".svelte-kit"],
+            &["JavaScript", "TypeScript", "Svelte"],
+            "SvelteKit build output",
+            true,
+        ),
+        pattern(
+            "astro-build",
+            &[".astro"],
+            &["JavaScript", "TypeScript"],
+            "Astro build cache",
+            true,
+        ),
+        pattern(
+            "angular-cache",
+            &[".angular"],
+            &["TypeScript"],
+            "Angular build cache",
+            true,
+        ),
+        pattern(
+            "docusaurus",
+            &[".docusaurus"],
+            &["JavaScript", "TypeScript"],
+            "Docusaurus build cache",
+            true,
+        ),
+        pattern(
+            "vite-cache",
+            &[".vite"],
+            &["JavaScript", "TypeScript"],
+            "Vite dependency cache",
+            true,
+        ),
+        pattern(
+            "bundler-caches",
+            &[".turbo", ".parcel-cache", ".webpack", ".rollup.cache"],
+            &["JavaScript", "TypeScript"],
+            "Bundler caches (Turborepo, Parcel, webpack, Rollup)",
+            true,
+        ),
+        pattern(
+            "storybook",
+            &["storybook-static"],
+            &["JavaScript", "TypeScript"],
+            "Storybook static build",
+            true,
+        ),
+        pattern(
+            "expo",
+            &[".expo"],
+            &["JavaScript", "TypeScript"],
+            "Expo build cache",
+            true,
+        ),
+        pattern(
+            "hosting-cli",
+            &[".vercel", ".netlify", ".serverless", ".aws-sam"],
+            &["JavaScript", "TypeScript", "Generic"],
+            "Hosting/serverless CLI build output",
+            true,
+        ),
+        pattern(
+            "sass-cache",
+            &[".sass-cache"],
+            &["CSS", "SCSS"],
+            "Sass compilation cache",
+            true,
+        ),
+        // ---------- Python ----------
+        pattern(
+            "pycache",
+            &["__pycache__"],
+            &["Python"],
+            "Python bytecode cache",
+            true,
+        ),
+        pattern(
+            "python-venv",
+            &[".venv", "venv", ".tox", ".nox", "env"],
+            &["Python"],
+            "Python virtual environments",
+            true,
+        ),
+        pattern(
+            "python-dist",
+            &["*.egg-info", "dist", "build", "develop-eggs"],
+            &["Python"],
+            "Python packaging output",
+            true,
+        ),
+        pattern(
+            "python-tool-caches",
+            &[
+                ".mypy_cache",
+                ".ruff_cache",
+                ".pytest_cache",
+                ".pytype",
+                ".pyre",
+                ".hypothesis",
+                "htmlcov",
             ],
-            languages: vec!["Python".to_string()],
-            description: "Python distribution and build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // Rust
-        ArtifactPattern {
-            name: "rust-target".to_string(),
-            patterns: vec!["target".to_string()],
-            languages: vec!["Rust".to_string()],
-            description: "Rust build artifacts directory".to_string(),
-            safe_to_delete: true,
-        },
-        // Java/Kotlin/Gradle
-        ArtifactPattern {
-            name: "gradle-build".to_string(),
-            patterns: vec!["build".to_string(), ".gradle".to_string()],
-            languages: vec!["Java".to_string(), "Kotlin".to_string()],
-            description: "Gradle build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "maven-target".to_string(),
-            patterns: vec!["target".to_string()],
-            languages: vec!["Java".to_string()],
-            description: "Maven target directory".to_string(),
-            safe_to_delete: true,
-        },
-        // C#
-        ArtifactPattern {
-            name: "dotnet-build".to_string(),
-            patterns: vec![
-                "obj".to_string(),
-                ".vs".to_string(),
-                "TestResults".to_string(),
+            &["Python"],
+            "Python tooling caches (mypy, ruff, pytest, hypothesis)",
+            true,
+        ),
+        pattern(
+            "python-misc",
+            &[
+                ".ipynb_checkpoints",
+                "__pypackages__",
+                ".eggs",
+                "pip-wheel-metadata",
             ],
-            languages: vec!["C#".to_string(), "CSharp".to_string()],
-            description: ".NET build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // C++
-        ArtifactPattern {
-            name: "cpp-build".to_string(),
-            patterns: vec!["CMakeFiles".to_string(), "cmake_install.cmake".to_string()],
-            languages: vec!["C++".to_string()],
-            description: "CMake build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // Next.js/Nuxt
-        ArtifactPattern {
-            name: "nextjs-build".to_string(),
-            patterns: vec![".next".to_string()],
-            languages: vec!["JavaScript".to_string(), "TypeScript".to_string()],
-            description: "Next.js build cache".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "nuxt-build".to_string(),
-            patterns: vec![".nuxt".to_string()],
-            languages: vec!["JavaScript".to_string(), "Vue".to_string()],
-            description: "Nuxt build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // PHP
-        ArtifactPattern {
-            name: "composer-vendor".to_string(),
-            patterns: vec!["vendor".to_string()],
-            languages: vec!["PHP".to_string()],
-            description: "Composer vendor directory".to_string(),
-            safe_to_delete: true,
-        },
-        // Ruby
-        ArtifactPattern {
-            name: "bundler-gems".to_string(),
-            patterns: vec![".bundle".to_string()],
-            languages: vec!["Ruby".to_string()],
-            description: "Bundler gem cache".to_string(),
-            safe_to_delete: true,
-        },
-        // Elixir
-        ArtifactPattern {
-            name: "elixir-build".to_string(),
-            patterns: vec!["_build".to_string(), "deps".to_string()],
-            languages: vec!["Elixir".to_string()],
-            description: "Elixir build and dependencies".to_string(),
-            safe_to_delete: true,
-        },
-        // Haskell
-        ArtifactPattern {
-            name: "haskell-build".to_string(),
-            patterns: vec![".stack-work".to_string(), "dist-newstyle".to_string()],
-            languages: vec!["Haskell".to_string()],
-            description: "Haskell build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // Mobile
-        ArtifactPattern {
-            name: "android-build".to_string(),
-            patterns: vec![".android".to_string(), "build".to_string()],
-            languages: vec!["Kotlin".to_string(), "Java".to_string()],
-            description: "Android build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        ArtifactPattern {
-            name: "ios-build".to_string(),
-            patterns: vec![".ios".to_string(), "DerivedData".to_string()],
-            languages: vec!["Swift".to_string(), "Objective-C".to_string()],
-            description: "iOS build artifacts".to_string(),
-            safe_to_delete: true,
-        },
-        // Build artifacts
-        ArtifactPattern {
-            name: "dist".to_string(),
-            patterns: vec!["dist".to_string()],
-            languages: vec!["JavaScript".to_string(), "TypeScript".to_string()],
-            description: "Distribution build directory".to_string(),
-            safe_to_delete: true,
-        },
-        // IDE and editor
-        // NOTE: `.vscode/extensions` used to live here but could never match a
-        // directory name, and .vscode holds user settings: not an artifact.
-        // General cache directories
-        ArtifactPattern {
-            name: "cache".to_string(),
-            patterns: vec![".cache".to_string()],
-            languages: vec!["Generic".to_string()],
-            description: "Generic hidden cache directory".to_string(),
-            safe_to_delete: true,
-        },
+            &["Python", "Jupyter"],
+            "Notebook checkpoints and legacy packaging dirs",
+            true,
+        ),
+        // ---------- Rust / Go ----------
+        pattern(
+            "rust-target",
+            &["target"],
+            &["Rust"],
+            "Rust build output",
+            true,
+        ),
+        // ---------- JVM ----------
+        pattern(
+            "gradle-build",
+            &["build", ".gradle", ".kotlin"],
+            &["Java", "Kotlin", "Groovy"],
+            "Gradle build output and caches",
+            true,
+        ),
+        pattern(
+            "maven-target",
+            &["target"],
+            &["Java"],
+            "Maven build output",
+            true,
+        ),
+        pattern(
+            "jvm-ide-output",
+            &["out"],
+            &["Java", "Kotlin", "Scala"],
+            "IDE compiler output (IntelliJ)",
+            false,
+        ),
+        pattern(
+            "scala-build",
+            &[".scala-build", ".bloop", ".metals", ".bsp"],
+            &["Scala"],
+            "Scala CLI/Bloop/Metals build output",
+            true,
+        ),
+        pattern(
+            "clojure-build",
+            &[".cpcache", ".clj-kondo"],
+            &["Clojure"],
+            "Clojure classpath and linter caches",
+            true,
+        ),
+        // ---------- .NET ----------
+        pattern(
+            "dotnet-build",
+            &["obj", ".vs", "TestResults", "BenchmarkDotNet.Artifacts"],
+            &["C#", "F#", "VB.NET"],
+            ".NET intermediate output and test results",
+            true,
+        ),
+        // ---------- C / C++ ----------
+        pattern(
+            "cpp-build",
+            &[
+                "CMakeFiles",
+                "cmake-build-debug",
+                "cmake-build-release",
+                "_deps",
+                "autom4te.cache",
+                ".deps",
+                ".libs",
+                "builddir",
+            ],
+            &["C", "C++", "Objective-C"],
+            "CMake/Autotools/Meson build output",
+            true,
+        ),
+        // ---------- Apple ----------
+        pattern(
+            "apple-build",
+            &[
+                "DerivedData",
+                "Pods",
+                "Carthage",
+                ".build",
+                "Build",
+                "xcuserdata",
+            ],
+            &["Swift", "Objective-C"],
+            "Xcode/SwiftPM/CocoaPods build output",
+            true,
+        ),
+        // ---------- Android / Dart ----------
+        pattern(
+            "android-build",
+            &[".cxx", ".externalNativeBuild", "captures"],
+            &["Kotlin", "Java"],
+            "Android native build output",
+            true,
+        ),
+        pattern(
+            "dart-flutter",
+            &[".dart_tool", ".pub-cache"],
+            &["Dart", "Flutter"],
+            "Dart/Flutter build cache",
+            true,
+        ),
+        // ---------- Game engines ----------
+        pattern(
+            "unity",
+            &["Library", "Temp", "Logs", "Builds"],
+            &["C#", "Unity"],
+            "Unity project cache and builds",
+            false,
+        ),
+        pattern(
+            "godot",
+            &[".godot", ".import", ".mono"],
+            &["GDScript", "Godot"],
+            "Godot import/compile cache",
+            true,
+        ),
+        // ---------- BEAM / functional ----------
+        pattern(
+            "elixir-build",
+            &["_build", "deps", ".elixir_ls", "cover"],
+            &["Elixir", "Erlang"],
+            "Elixir/Erlang build output and dependencies",
+            true,
+        ),
+        pattern(
+            "ocaml-build",
+            &["_opam"],
+            &["OCaml"],
+            "OCaml local switch packages",
+            true,
+        ),
+        pattern(
+            "haskell-build",
+            &[".stack-work", "dist-newstyle"],
+            &["Haskell"],
+            "Stack/Cabal build output",
+            true,
+        ),
+        pattern(
+            "zig-build",
+            &["zig-cache", "zig-out", ".zig-cache"],
+            &["Zig"],
+            "Zig build cache and output",
+            true,
+        ),
+        pattern(
+            "nim-build",
+            &["nimcache"],
+            &["Nim"],
+            "Nim compilation cache",
+            true,
+        ),
+        pattern(
+            "purescript-output",
+            &["output"],
+            &["PureScript"],
+            "PureScript compiler output",
+            false,
+        ),
+        // ---------- Ruby / PHP ----------
+        pattern(
+            "bundler-gems",
+            &[".bundle", ".yardoc"],
+            &["Ruby"],
+            "Bundler/YARD caches",
+            true,
+        ),
+        pattern(
+            "composer-vendor",
+            &["vendor"],
+            &["PHP"],
+            "Composer dependencies",
+            true,
+        ),
+        pattern(
+            "php-tool-caches",
+            &[".phpunit.cache", ".php-cs-fixer.cache", ".phpstan-cache"],
+            &["PHP"],
+            "PHP tooling caches (PHPUnit, CS-Fixer, PHPStan)",
+            true,
+        ),
+        // ---------- Infra ----------
+        pattern(
+            "terraform",
+            &[".terraform", ".terragrunt-cache"],
+            &["Terraform", "HCL"],
+            "Terraform provider and plugin cache",
+            true,
+        ),
+        // ---------- Experiments / data ----------
+        pattern(
+            "experiment-tracking",
+            &["mlruns", "wandb", "lightning_logs", ".lightning"],
+            &["Python", "ML"],
+            "ML experiment logs and checkpoints (keep if unreproducible!)",
+            false,
+        ),
+        // ---------- Generic ----------
+        pattern(
+            "dist",
+            &["dist"],
+            &["JavaScript", "TypeScript", "Generic"],
+            "Distribution/build output",
+            true,
+        ),
+        pattern(
+            "coverage",
+            &["coverage", ".nyc_output"],
+            &["Generic"],
+            "Test coverage reports",
+            true,
+        ),
+        pattern(
+            "cache",
+            &[".cache"],
+            &["Generic"],
+            "Generic hidden cache directory",
+            true,
+        ),
+        pattern(
+            "ide-project-metadata",
+            &[".idea"],
+            &["Generic"],
+            "JetBrains project index and local settings",
+            false,
+        ),
     ]
 });
 
@@ -272,5 +505,68 @@ mod tests {
     fn test_get_pattern_names() {
         let names = get_pattern_names();
         assert!(names.contains(&"node_modules".to_string()));
+    }
+
+    #[test]
+    fn patterns_are_unique_and_described() {
+        let patterns = get_default_patterns();
+
+        let mut names: Vec<&str> = patterns.iter().map(|p| p.name.as_str()).collect();
+        names.sort();
+        let mut deduped = names.clone();
+        deduped.dedup();
+        assert_eq!(names, deduped, "duplicate pattern names");
+
+        for pattern in &patterns {
+            assert!(
+                !pattern.patterns.is_empty(),
+                "{} matches nothing",
+                pattern.name
+            );
+            assert!(
+                !pattern.description.is_empty(),
+                "{} has no description",
+                pattern.name
+            );
+            assert!(
+                !pattern.languages.is_empty(),
+                "{} has no language",
+                pattern.name
+            );
+            for entry in &pattern.patterns {
+                assert!(
+                    !entry.is_empty() && !entry.contains('/'),
+                    "{} has an unusable pattern `{}`: artifacts are matched by \
+                     directory name, a path never matches",
+                    pattern.name,
+                    entry
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn every_ecosystem_has_a_pattern() {
+        // The list is a catalogue: a language without a pattern is a gap.
+        let names = get_pattern_names();
+        for wanted in [
+            "node_modules",
+            "python-venv",
+            "rust-target",
+            "gradle-build",
+            "dotnet-build",
+            "cpp-build",
+            "apple-build",
+            "dart-flutter",
+            "unity",
+            "elixir-build",
+            "haskell-build",
+            "composer-vendor",
+            "bundler-gems",
+            "terraform",
+            "zig-build",
+        ] {
+            assert!(names.contains(&wanted.to_string()), "{wanted} is missing");
+        }
     }
 }

@@ -323,47 +323,72 @@ klean -q
 
 ## Supported Artifacts
 
-### Node.js/JavaScript
-- `node_modules`
-- `.npm`
-- `.next`
-- `.nuxt`
-- `dist`
+Matched by directory name (exact or `*`/`?` glob), described per ecosystem.
+Entries marked ⚠ are still cleanable but flagged as "possibly wanted" because
+the name can also mean something else in a given repo.
+
+### JavaScript / TypeScript
+- `node_modules`, `bower_components`, `.npm`, `.pnpm-store`
+- `.next`, `.nuxt`, `.output`, `.svelte-kit`, `.astro`, `.angular`, `.docusaurus`
+- `.vite`, `.turbo`, `.parcel-cache`, `.webpack`, `.rollup.cache`
+- `storybook-static`, `.expo`, `.vercel`, `.netlify`, `.serverless`, `.aws-sam`
+- `dist`, `coverage`, `.nyc_output`
 
 ### Python
-- `__pycache__`
-- `.venv`, `venv`, `env`, `.tox`
-- `*.egg-info`, `dist`, `build`
+- `__pycache__`, `*.egg-info`, `dist`, `build`, `develop-eggs`
+- `.venv`, `venv`, `env`, `.tox`, `.nox`
+- `.mypy_cache`, `.ruff_cache`, `.pytest_cache`, `.pytype`, `.pyre`, `.hypothesis`
+- `htmlcov`, `.ipynb_checkpoints`, `__pypackages__`, `.eggs`, `pip-wheel-metadata`
 
-### Rust
+### Rust / Go
 - `target`
 
-### Java/Kotlin/Gradle
-- `build`
-- `.gradle`
-- `target`
+### JVM (Java, Kotlin, Scala, Clojure, Groovy)
+- `build`, `.gradle`, `.kotlin`, `target`
+- `out` ⚠ (IDE compiler output)
+- `.scala-build`, `.bloop`, `.metals`, `.bsp`, `.cpcache`, `.clj-kondo`
 
-### C#/.NET
-- `bin`
-- `obj`
-- `.vs`
+### .NET (C#, F#, VB)
+- `obj`, `.vs`, `TestResults`, `BenchmarkDotNet.Artifacts`
 
-### PHP/Ruby
-- `vendor`
-- `.bundle`
+### C / C++ / Objective-C
+- `CMakeFiles`, `cmake-build-debug`, `cmake-build-release`, `_deps`, `builddir`
+- `autom4te.cache`, `.deps`, `.libs`
 
-### Elixir
-- `_build`
-- `deps`
+### Apple (Swift, Objective-C)
+- `DerivedData`, `Pods`, `Carthage`, `.build`, `Build`, `xcuserdata`
 
-### Haskell
-- `.stack-work`
-- `dist-newstyle`
+### Android / Dart / Flutter
+- `.cxx`, `.externalNativeBuild`, `captures`
+- `.dart_tool`, `.pub-cache`
 
-### Mobile
-- `.android`
-- `.ios`
-- `DerivedData`
+### Game engines
+- `Library` ⚠, `Temp` ⚠, `Logs` ⚠, `Builds` ⚠ (Unity)
+- `.godot`, `.import`, `.mono` (Godot)
+
+### BEAM / functional
+- `_build`, `deps`, `.elixir_ls`, `cover` (Elixir, Erlang)
+- `_opam` (OCaml), `.stack-work`, `dist-newstyle` (Haskell)
+- `zig-cache`, `zig-out`, `.zig-cache` (Zig), `nimcache` (Nim)
+- `output` ⚠ (PureScript)
+
+### Ruby / PHP
+- `.bundle`, `.yardoc`
+- `vendor` (Composer), `.phpunit.cache`, `.php-cs-fixer.cache`, `.phpstan-cache`
+
+### Infrastructure / experiments
+- `.terraform`, `.terragrunt-cache`
+- `mlruns` ⚠, `wandb` ⚠, `lightning_logs` ⚠, `.lightning` ⚠ (ML runs — keep if
+  they are not reproducible)
+
+### Generic
+- `dist`, `coverage`, `.cache`, `.idea` ⚠, `.sass-cache`
+
+Deliberately **not** matched: `log`, `logs`, `tmp`, `lib`, `bin`, `packages` and
+`vendor` for Go — names as likely to be hand-written source as build output
+(`bin` matched a real mise plugin and `packages` the pnpm workspace of a real
+project on this machine, so both were dropped). Add them per project with
+`[[patterns]]` in `klean.toml` or with a plugin when you know the layout.
 
 And many more! Add custom patterns in `klean.toml`.
 

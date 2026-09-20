@@ -177,3 +177,71 @@ fn klignore_protects_artifacts_and_gitignore_does_not() {
     let outcome = scan(&root);
     assert!(names(&outcome).contains(&"node_modules".to_string()));
 }
+
+/// The catalogue is only worth anything if every entry is actually reachable:
+/// adds a directory per ecosystem and demands all of them, exactly once.
+#[test]
+fn detects_each_ecosystem_directory_once() {
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+
+    let cases: &[(&str, &str)] = &[
+        ("js", "node_modules"),
+        ("js", ".next"),
+        ("js", ".svelte-kit"),
+        ("js", ".turbo"),
+        ("js", "bower_components"),
+        ("js", ".pnpm-store"),
+        ("py", "__pycache__"),
+        ("py", ".mypy_cache"),
+        ("py", ".nox"),
+        ("py", ".ipynb_checkpoints"),
+        ("rs", "target"),
+        ("jvm", ".gradle"),
+        ("jvm", ".kotlin"),
+        ("jvm", "out"),
+        ("scala", ".scala-build"),
+        ("clj", ".cpcache"),
+        ("cs", "obj"),
+        ("cs", "BenchmarkDotNet.Artifacts"),
+        ("cpp", "cmake-build-debug"),
+        ("cpp", "_deps"),
+        ("apple", "Pods"),
+        ("apple", "DerivedData"),
+        ("dart", ".dart_tool"),
+        ("unity", "Library"),
+        ("godot", ".godot"),
+        ("ex", "_build"),
+        ("ocaml", "_opam"),
+        ("hs", ".stack-work"),
+        ("zig", "zig-cache"),
+        ("nim", "nimcache"),
+        ("rb", ".yardoc"),
+        ("php", ".phpunit.cache"),
+        ("tf", ".terraform"),
+        ("ml", "mlruns"),
+        ("gen", ".idea"),
+        ("gen", ".cache"),
+        ("gen", "coverage"),
+    ];
+
+    for (project, dir) in cases {
+        write_file(&root.join(project).join(dir).join("payload.bin"), 1024);
+    }
+
+    let outcome = scan(&root);
+    let found: Vec<String> = outcome.artifacts.iter().map(|a| a.name.clone()).collect();
+
+    for (project, dir) in cases {
+        assert!(
+            found.contains(&dir.to_string()),
+            "{dir} in {project} was not detected (got {found:?})"
+        );
+    }
+
+    assert_eq!(
+        outcome.artifacts.len(),
+        cases.len(),
+        "one artifact per directory and nothing nested, got {found:?}"
+    );
+}

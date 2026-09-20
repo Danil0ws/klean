@@ -142,6 +142,17 @@ impl TuiState {
         self.selected_artifacts.iter().filter(|s| **s).count()
     }
 
+    /// How many of the selected artifacts are heuristic matches (`bin`, `out`,
+    /// `Library`, ...) that may hold hand-written work instead of build output.
+    pub fn selected_unsafe_count(&self) -> usize {
+        self.artifacts
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| self.selected_artifacts.get(*i).copied().unwrap_or(false))
+            .filter(|(_, artifact)| !artifact.is_safe)
+            .count()
+    }
+
     /// Number of distinct projects in the current list.
     pub fn project_count(&self) -> usize {
         Self::distinct_projects(self.artifacts.iter())
@@ -372,8 +383,10 @@ impl Tui {
 
     pub fn render_list(f: &mut Frame, state: &mut TuiState) {
         // The footer gains a line per extra message (session total, notice).
-        let extra_lines =
-            usize::from(state.session_cleaned > 0) + usize::from(state.notice.is_some());
+        let unsafe_selected = state.selected_unsafe_count();
+        let extra_lines = usize::from(state.session_cleaned > 0)
+            + usize::from(state.notice.is_some())
+            + usize::from(unsafe_selected > 0);
         let footer_height = (4 + extra_lines) as u16;
 
         let chunks = Layout::default()
@@ -521,6 +534,15 @@ impl Tui {
                     state.session_cleaned
                 ),
                 Style::default().fg(Color::Green),
+            )));
+        }
+
+        if unsafe_selected > 0 {
+            status_text.push(Line::from(Span::styled(
+                format!(
+                    "⚠ {unsafe_selected} selecionado(s) podem ser código, não build (bin, out, Library...) — confira"
+                ),
+                Style::default().fg(Color::Yellow),
             )));
         }
 
