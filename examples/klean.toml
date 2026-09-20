@@ -46,6 +46,34 @@ description = "Custom temporary files"
 safe_to_delete = true
 
 # ============================================================================
+# PROJECT MANAGEMENT
+# ============================================================================
+#
+# klean groups results by project (the nearest ancestor of an artifact that
+# contains a marker file: package.json, Cargo.toml, go.mod, .git, ...).
+# Rules decide what may be deleted inside a project; the most specific rule
+# (longest matching path) wins. Artifacts blocked by a rule are reported as
+# skipped, never deleted.
+
+[[projects]]
+# Project root: absolute path, `~/...` or a glob.
+path = "~/Work/production-app"
+# false = never delete anything inside this project.
+enabled = false
+
+[[projects]]
+path = "~/Dev/monorepo"
+# If set, only these may be deleted here (directory name or pattern name).
+allow = ["node_modules", "dist", ".next"]
+# Never delete these, even if they match a pattern.
+deny = ["target"]
+
+[[projects]]
+# Globs work too.
+path = "~/sandbox/*"
+allow = []          # empty = everything klean finds is allowed
+
+# ============================================================================
 # VERBOSITY
 # ============================================================================
 

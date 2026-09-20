@@ -3,29 +3,44 @@ use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use std::fs;
 use std::path::Path;
 
-/// Manages ignore rules from .klignore and optionally .gitignore files
+/// Manages ignore rules from .klignore and optionally .gitignore files.
 pub struct IgnoreRules {
     gitignore: Option<Gitignore>,
+    /// True when the rules come from a `.klignore` (explicit protection list).
+    /// `.gitignore` is only used as a traversal hint, never as protection,
+    /// because build artifacts like node_modules are always gitignored.
+    protects: bool,
 }
 
 impl IgnoreRules {
     /// Create a new IgnoreRules instance, loading rules from the given directory
     pub fn from_path(root: &Path, respect_gitignore: bool) -> Result<Self> {
-        let mut gitignore = None;
-
         // Load .klignore first (takes precedence)
         if let Some(loaded) = Self::load_klignore(root)? {
-            gitignore = Some(loaded);
-        } else if respect_gitignore {
-            // Fall back to .gitignore if no .klignore
+            return Ok(IgnoreRules {
+                gitignore: Some(loaded),
+                protects: true,
+            });
+        }
+
+        if respect_gitignore {
             if let Some(loaded) = Self::load_gitignore(root)? {
-                gitignore = Some(loaded);
+                return Ok(IgnoreRules {
+                    gitignore: Some(loaded),
+                    protects: false,
+                });
             }
         }
 
         Ok(IgnoreRules {
-            gitignore,
+            gitignore: None,
+            protects: false,
         })
+    }
+
+    /// True when matching paths must never be cleaned.
+    pub fn protects(&self) -> bool {
+        self.protects
     }
 
     /// Load .klignore file and convert it to gitignore format
@@ -84,6 +99,8 @@ impl IgnoreRules {
         let gitignore = Self::build_gitignore_from_file(path)?;
         Ok(IgnoreRules {
             gitignore,
+            // A file passed with --klignore is an explicit protection list.
+            protects: true,
         })
     }
 }
@@ -100,14 +117,7 @@ impl KlignoreParser {
             .lines()
             .map(|line| line.trim())
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
-            .map(|line| {
-                // Handle negation patterns
-                if line.starts_with('!') {
-                    line.to_string()
-                } else {
-                    line.to_string()
-                }
-            })
+            .map(|line| line.to_string())
             .collect()
     }
 
@@ -136,9 +146,9 @@ impl KlignoreParser {
         if pattern.contains('*') {
             // Wildcard matching
             wildcard_match(&path_str, pattern)
-        } else if pattern.starts_with('/') {
+        } else if let Some(absolute) = pattern.strip_prefix('/') {
             // Absolute path from root
-            path_str == &pattern[1..]
+            path_str == absolute
         } else {
             // Relative path - check if it appears anywhere
             path_str.contains(pattern)

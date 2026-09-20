@@ -1,4 +1,4 @@
-use crate::scanner::Artifact;
+use crate::scanner::{is_sensitive_system_path, Artifact};
 use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
@@ -13,24 +13,44 @@ pub struct Cleaner {
     action: CleanerAction,
     backup_dir: Option<PathBuf>,
     allow_system_paths: bool,
+    root: Option<PathBuf>,
 }
 
 impl Cleaner {
-    pub fn new(action: CleanerAction, backup_dir: Option<PathBuf>, allow_system_paths: bool) -> Self {
+    pub fn new(
+        action: CleanerAction,
+        backup_dir: Option<PathBuf>,
+        allow_system_paths: bool,
+    ) -> Self {
         Cleaner {
             action,
             backup_dir,
             allow_system_paths,
+            root: None,
         }
     }
 
-    /// Check if an artifact is safe to delete (has marker files)
+    /// Scan root the artifacts came from. When that root itself lives under a
+    /// sensitive prefix (e.g. `/private/var/...` on macOS), the user explicitly
+    /// asked for that path, so the refusal is lifted for this scan — exactly
+    /// like the scanner does. Without it, scanning `/tmp` finds artifacts and
+    /// then refuses to clean all of them.
+    pub fn with_root(mut self, root: impl Into<PathBuf>) -> Self {
+        self.root = Some(root.into());
+        self
+    }
+
+    fn root_is_sensitive(&self) -> bool {
+        self.root.as_deref().is_some_and(is_sensitive_system_path)
+    }
+
+    /// Check if an artifact is safe to delete (its project has marker files)
     pub fn is_safe_to_delete(&self, artifact: &Artifact) -> bool {
         if !artifact.is_safe {
             return false;
         }
 
-        // Check for known marker files that indicate a regenerable directory
+        // Check for known marker files that indicate a regenerable directory.
         let parent = artifact.path.parent().unwrap_or_else(|| Path::new("."));
         let markers = [
             "package.json",     // Node.js
@@ -44,7 +64,9 @@ impl Cleaner {
             "Gemfile",          // Ruby
         ];
 
-        markers.iter().any(|marker| parent.join(marker).exists())
+        markers
+            .iter()
+            .any(|marker| parent.join(marker).exists() || artifact.project.join(marker).exists())
     }
 
     /// Verify if it's safe to proceed with cleaning
@@ -59,6 +81,21 @@ impl Cleaner {
             ));
         }
 
+        // Nested targets would delete a directory twice (parent first, then a
+        // child that no longer exists). The scanner never produces them; refuse
+        // if something else does.
+        for (i, a) in artifacts.iter().enumerate() {
+            for b in artifacts.iter().skip(i + 1) {
+                if b.path.starts_with(&a.path) || a.path.starts_with(&b.path) {
+                    return Err(anyhow!(
+                        "Refusing to clean nested artifacts: {} and {} overlap",
+                        a.path.display(),
+                        b.path.display()
+                    ));
+                }
+            }
+        }
+
         // Warn about unsafe deletions
         let unsafe_count = artifacts
             .iter()
@@ -71,10 +108,10 @@ impl Cleaner {
             );
         }
 
-        if !self.allow_system_paths {
+        if !self.allow_system_paths && !self.root_is_sensitive() {
             let sensitive = artifacts
                 .iter()
-                .filter(|artifact| Self::is_sensitive_system_path(&artifact.path))
+                .filter(|artifact| is_sensitive_system_path(&artifact.path))
                 .count();
 
             if sensitive > 0 {
@@ -86,25 +123,6 @@ impl Cleaner {
         }
 
         Ok(())
-    }
-
-    fn is_sensitive_system_path(path: &Path) -> bool {
-        const SENSITIVE_SYSTEM_PREFIXES: &[&str] = &[
-            "/System",
-            "/Library",
-            "/usr",
-            "/bin",
-            "/sbin",
-            "/private",
-            "/etc",
-            "/var",
-            "/Applications",
-        ];
-
-        let path_str = path.to_string_lossy();
-        SENSITIVE_SYSTEM_PREFIXES
-            .iter()
-            .any(|prefix| path_str == *prefix || path_str.starts_with(&format!("{}/", prefix)))
     }
 
     /// Clean artifacts (either delete or backup)
@@ -301,6 +319,7 @@ mod tests {
             pattern_name: "test".to_string(),
             modified: None,
             is_safe: true,
+            project: temp_dir.path().to_path_buf(),
         };
 
         let cleaner = Cleaner::new(CleanerAction::Delete, None, false);

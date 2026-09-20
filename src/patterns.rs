@@ -38,11 +38,7 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         },
         ArtifactPattern {
             name: "python-venv".to_string(),
-            patterns: vec![
-                ".venv".to_string(),
-                "venv".to_string(),
-                ".tox".to_string(),
-            ],
+            patterns: vec![".venv".to_string(), "venv".to_string(), ".tox".to_string()],
             languages: vec!["Python".to_string()],
             description: "Python virtual environments".to_string(),
             safe_to_delete: true,
@@ -84,7 +80,11 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         // C#
         ArtifactPattern {
             name: "dotnet-build".to_string(),
-            patterns: vec!["obj".to_string(), ".vs".to_string(), "TestResults".to_string()],
+            patterns: vec![
+                "obj".to_string(),
+                ".vs".to_string(),
+                "TestResults".to_string(),
+            ],
             languages: vec!["C#".to_string(), "CSharp".to_string()],
             description: ".NET build artifacts".to_string(),
             safe_to_delete: true,
@@ -123,7 +123,7 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         // Ruby
         ArtifactPattern {
             name: "bundler-gems".to_string(),
-            patterns: vec![".bundle".to_string(), "vendor/bundle".to_string()],
+            patterns: vec![".bundle".to_string()],
             languages: vec!["Ruby".to_string()],
             description: "Bundler gem cache".to_string(),
             safe_to_delete: true,
@@ -168,13 +168,8 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
             safe_to_delete: true,
         },
         // IDE and editor
-        ArtifactPattern {
-            name: "vscode-settings".to_string(),
-            patterns: vec![".vscode/extensions".to_string()],
-            languages: vec!["Generic".to_string()],
-            description: "VS Code extensions cache".to_string(),
-            safe_to_delete: true,
-        },
+        // NOTE: `.vscode/extensions` used to live here but could never match a
+        // directory name, and .vscode holds user settings: not an artifact.
         // General cache directories
         ArtifactPattern {
             name: "cache".to_string(),
@@ -185,6 +180,43 @@ pub static DEFAULT_PATTERNS: Lazy<Vec<ArtifactPattern>> = Lazy::new(|| {
         },
     ]
 });
+
+/// Match a directory name against a pattern. Supports exact names and simple
+/// globs (`*`, `?`), so patterns like `*.egg-info` work.
+pub fn name_matches(name: &str, pattern: &str) -> bool {
+    if !pattern.contains('*') && !pattern.contains('?') {
+        return name == pattern;
+    }
+
+    let name: Vec<char> = name.chars().collect();
+    let pattern: Vec<char> = pattern.chars().collect();
+    // (name index, pattern index) backtracking for the last `*`.
+    let (mut n, mut p) = (0usize, 0usize);
+    let (mut star, mut mark) = (None, 0usize);
+
+    while n < name.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == name[n]) {
+            n += 1;
+            p += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            star = Some(p);
+            mark = n;
+            p += 1;
+        } else if let Some(s) = star {
+            p = s + 1;
+            mark += 1;
+            n = mark;
+        } else {
+            return false;
+        }
+    }
+
+    while p < pattern.len() && pattern[p] == '*' {
+        p += 1;
+    }
+
+    p == pattern.len()
+}
 
 /// Get all default patterns
 pub fn get_default_patterns() -> Vec<ArtifactPattern> {
