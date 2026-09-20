@@ -4,7 +4,7 @@
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>klean</id>
-    <version>1.1.0</version>
+    <version>1.2.0</version>
     <packageSourceUrl>https://github.com/danil0ws/chocolatey-klean</packageSourceUrl>
     <owners>klean</owners>
     <title>klean</title>
@@ -27,7 +27,7 @@
       per project through klean.toml.
     </description>
     <releaseNotes>
-      https://github.com/danil0ws/klean/releases/tag/v1.1.0
+      https://github.com/danil0ws/klean/releases/tag/v1.2.0
     </releaseNotes>
   </metadata>
   <files>

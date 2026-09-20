@@ -10,6 +10,9 @@
 # ship to package managers; `--check` asserts those always match Cargo.toml.
 set -euo pipefail
 
+# BSD sed (macOS) dies on non-UTF8 bytes *with* a UTF-8 locale; run byte-oriented.
+export LC_ALL=C
+
 cd "$(dirname "$0")/.."
 
 CARRIERS=(
@@ -53,10 +56,13 @@ fi
 # Every file still naming the current version, build output and vendored trees
 # excluded. -i.bak works on both BSD and GNU sed; the backup is thrown away.
 files=()
+# BSD grep (macOS) ignores --exclude-dir, so drop build/SCM noise here instead.
 while IFS= read -r file; do
+  case "$file" in
+    ./.git/*|./target/*|./node_modules/*) continue ;;
+  esac
   files+=("$file")
-done < <(grep -rl -- "$old" . \
-  --exclude-dir=target --exclude-dir=.git --exclude-dir=node_modules 2>/dev/null || true)
+done < <(grep -rl -- "$old" . 2>/dev/null || true)
 
 for file in "${files[@]}"; do
   sed -i.bak "s/${old//./\\.}/$new/g" "$file"
