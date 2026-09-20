@@ -138,7 +138,7 @@ fn main() -> Result<()> {
     }
 
     if matches!(mode, Mode::Watch) {
-        return watch::run(
+        let over_limit = watch::run(
             &scanner,
             WatchOptions {
                 interval: watch::parse_duration(&cli.interval)?,
@@ -147,8 +147,14 @@ fn main() -> Result<()> {
                 quiet: cli.quiet,
                 allow_system_paths: cli.allow_system_paths,
                 backup_dir: final_config.backup_dir.clone(),
+                fail_if_over: cli.fail_if_over.as_deref().map(parse_size).transpose()?,
             },
-        );
+        )?;
+
+        if over_limit {
+            std::process::exit(EXIT_OVER_LIMIT);
+        }
+        return Ok(());
     }
 
     // Scan for artifacts, naming the directory being read while it happens.

@@ -221,9 +221,19 @@ src/**/build
 # Blank lines are ignored (as shown above)
 ```
 
+A `.klignore` is a **protection list**: anything it matches is never reported,
+whatever the patterns say. Patterns resolve against the **scan root** (the
+`--path` you passed, canonicalised) — not against the directory holding the file
+and not against your current directory. `/node_modules` means
+`<scan-root>/node_modules`, a bare `node_modules` matches at any depth, and a
+leading `!` re-includes something an earlier line protected.
+
 ### klean.toml
 
-Project-specific or global configuration:
+Project-specific or global configuration. The two files have different names on
+purpose: `<root>/klean.toml` travels with the repository, while
+`~/.config/klean/config.toml` is your machine's default. They merge additively
+(global first, then project) and the most specific `[[projects]]` rule wins.
 
 ```toml
 # ~/.config/klean/config.toml (global)
@@ -529,6 +539,17 @@ Performance scales well with SSD storage and decreases on slower storage.
 4. **Confirmation**: Interactive mode always confirms before deletion
 5. **Dry Run**: Preview exactly what will be deleted
 6. **Backup Option**: Move instead of permanently deleting
+7. **Undo**: `T` in the confirmation (or `--trash`) moves items to
+   `<config>/klean/trash` and `klean undo` brings them back
+8. **Symlinks are neither followed nor reported**: a `node_modules` that is a
+   symlink (pnpm workspaces, Nix, shared caches) is skipped, and a directory that
+   is itself a link is never a target — klean deletes the real directory it
+   matched, so nothing outside the scan tree can be removed through a link.
+   Point `--path` at the real location (or use `klean explain <path>`) when a
+   link hides an artifact you wanted.
+9. **Sensitive paths**: `/`, `/etc`, `/usr`, `/var`, `/tmp`, `/System` and
+   friends are skipped unless the scan root is already inside them, and the
+   cleaner re-checks before deleting.
 
 ## Development
 

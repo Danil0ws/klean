@@ -13,6 +13,9 @@ pub struct WatchOptions {
     pub quiet: bool,
     pub allow_system_paths: bool,
     pub backup_dir: Option<PathBuf>,
+    /// `--fail-if-over` in CI/cron: `watch --once` reports the breach so the
+    /// caller can exit 2 without parsing the log.
+    pub fail_if_over: Option<u64>,
 }
 
 /// Parse "30s", "15m", "2h", "1d" (or a bare number of seconds).
@@ -42,7 +45,7 @@ pub fn parse_duration(text: &str) -> Result<Duration> {
     Ok(Duration::from_secs(amount * unit_secs))
 }
 
-pub fn run(scanner: &ArtifactScanner, options: WatchOptions) -> Result<()> {
+pub fn run(scanner: &ArtifactScanner, options: WatchOptions) -> Result<bool> {
     let mut round = 0u64;
 
     loop {
@@ -50,6 +53,7 @@ pub fn run(scanner: &ArtifactScanner, options: WatchOptions) -> Result<()> {
         let outcome = scanner.scan()?;
         let total: u64 = outcome.artifacts.iter().map(|a| a.size).sum();
         let projects = outcome.groups().len();
+        let over_limit = options.fail_if_over.is_some_and(|limit| total > limit);
 
         if !options.quiet {
             println!(
@@ -58,6 +62,13 @@ pub fn run(scanner: &ArtifactScanner, options: WatchOptions) -> Result<()> {
                 projects,
                 humansize::format_size(total, humansize::BINARY)
             );
+            if over_limit {
+                eprintln!(
+                    "❌ total {} acima do limite {}",
+                    humansize::format_size(total, humansize::BINARY),
+                    humansize::format_size(options.fail_if_over.unwrap_or(0), humansize::BINARY)
+                );
+            }
             if !outcome.blocked.is_empty() {
                 println!(
                     "  🚫 {} bloqueado(s) por regra de projeto",
@@ -102,7 +113,8 @@ pub fn run(scanner: &ArtifactScanner, options: WatchOptions) -> Result<()> {
         }
 
         if options.once {
-            return Ok(());
+            // The caller turns this into exit code 2 (same gate as `list`).
+            return Ok(over_limit);
         }
 
         std::thread::sleep(options.interval);

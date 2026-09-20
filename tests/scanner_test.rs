@@ -245,3 +245,30 @@ fn detects_each_ecosystem_directory_once() {
         "one artifact per directory and nothing nested, got {found:?}"
     );
 }
+
+/// Symlinks are neither followed nor reported: klean only ever deletes the real
+/// directory it matched, never whatever a link points at.
+#[cfg(unix)]
+#[test]
+fn symlinked_artifacts_are_ignored() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().canonicalize().unwrap();
+
+    let real = root.join("real/node_modules");
+    write_file(&real.join("left-pad/f.js"), 2048);
+    fs::create_dir_all(root.join("linked")).unwrap();
+    symlink(&real, root.join("linked/node_modules")).unwrap();
+
+    let outcome = scan(&root);
+    assert_eq!(
+        names(&outcome),
+        vec!["node_modules".to_string()],
+        "o link não pode virar um segundo artefato"
+    );
+    assert_eq!(
+        outcome.artifacts[0].path, real,
+        "o alvo apontado pelo link fica fora dos alvos"
+    );
+}
