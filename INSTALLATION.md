@@ -1,5 +1,22 @@
 # Installation Guide
 
+## One-liner (no package manager)
+
+Linux/macOS — downloads the release tarball for your OS/arch, checks it against
+the release `SHA256SUMS` and installs to `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.sh | sh
+# options: --version v0.1.2  --prefix /usr/local/bin  --dry-run
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.ps1 | iex
+# options: -Version v0.1.2  -Prefix C:\Tools\klean  -DryRun
+```
+
 ## Package Manager Installation Methods
 
 ### macOS
@@ -16,23 +33,16 @@ Update:
 brew upgrade klean
 ```
 
-#### MacPorts
+#### Other macOS package managers
 
-```bash
-sudo port install klean
-```
-
-Update:
-```bash
-sudo port selfupdate
-sudo port upgrade klean
-```
+MacPorts does not carry klean. Build it from source (see below) or download the
+binary directly from the releases page.
 
 ### Linux
 
 #### Ubuntu/Debian
 
-From PPA or Packagecloud:
+From Packagecloud (published by `linux-packages.yml`):
 
 ```bash
 # Add repository
@@ -42,15 +52,17 @@ curl -s https://packagecloud.io/install/repositories/danil0ws/klean/script.deb.s
 sudo apt-get install klean
 ```
 
-Or download .deb directly:
+Or download the `.deb` from a release:
+
 ```bash
-wget https://github.com/danil0ws/klean/releases/download/latest/klean-*.deb
-sudo dpkg -i klean-*.deb
+VERSION=v1.0.0
+curl -LO "https://github.com/danil0ws/klean/releases/download/${VERSION}/klean_${VERSION#v}-1_amd64.deb"
+sudo dpkg -i klean_*.deb
 ```
 
 #### Fedora/CentOS/RHEL
 
-From Copr or Packagecloud:
+From Packagecloud:
 
 ```bash
 # Add repository
@@ -60,9 +72,11 @@ curl -s https://packagecloud.io/install/repositories/danil0ws/klean/script.rpm.s
 sudo dnf install klean
 ```
 
-Or download .rpm directly:
+Or download the `.rpm` from a release:
+
 ```bash
-wget https://github.com/danil0ws/klean/releases/download/latest/klean-*.rpm
+VERSION=v1.0.0
+curl -LO "https://github.com/danil0ws/klean/releases/download/${VERSION}/klean-${VERSION#v}-1.x86_64.rpm"
 sudo rpm -ivh klean-*.rpm
 ```
 
@@ -80,25 +94,16 @@ cd klean
 makepkg -si
 ```
 
-Pacman (from official repos if packaged):
-```bash
-sudo pacman -S klean
-```
-
 #### NixOS
 
-```bash
-nix-shell -p klean
-# or
-nix profile install github:danil0ws/klean
-```
+klean is not in nixpkgs yet; use `cargo install klean` or build from source.
 
 ### Windows
 
 #### Scoop
 
 ```powershell
-scoop bucket add klean https://github.com/klean-cli/scoop-bucket
+scoop bucket add klean https://github.com/danil0ws/scoop-bucket
 scoop install klean
 ```
 
@@ -136,14 +141,14 @@ winget upgrade klean.klean
 Install Mise plugin:
 
 ```bash
-mise plugin add klean https://github.com/klean-cli/mise-klean
+mise plugin add klean https://github.com/danil0ws/mise-klean
 mise install klean@latest
 ```
 
 With asdf:
 
 ```bash
-asdf plugin add klean https://github.com/danil0ws/asdf-klean
+asdf plugin add klean https://github.com/danil0ws/mise-klean
 asdf install klean latest
 asdf global klean latest
 ```

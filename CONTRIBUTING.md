@@ -65,6 +65,9 @@ cargo test -- --nocapture
 
 ### Commit Messages
 
+The exact commands for committing and pushing on `main` (including the checks CI
+runs and how to split a pile of changes) are in [GIT.md](GIT.md).
+
 Follow conventional commit format:
 
 ```
@@ -229,8 +232,8 @@ fn test_end_to_end_scanning() {
 
 - Minimize allocations in hot paths
 - Use iterators instead of collecting
-- Leverage parallelism with rayon where appropriate
-- Avoid excessive cloning
+- Prefer a clear loop over clever iterator chains that need decoding at 3am
+- Avoid excessive cloning (the scanner clones `Artifact`s when grouping)
 
 ```rust
 // ❌ Avoid
