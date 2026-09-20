@@ -1,0 +1,25 @@
+# Maintainer: klean contributors
+# Kept in sync with .github/workflows/aur-update.yml, which regenerates this
+# file plus .SRCINFO on every release.
+pkgname=klean
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Safe, efficient CLI for cleaning development environments"
+arch=('x86_64' 'aarch64')
+url="https://github.com/danil0ws/klean"
+license=('MIT' 'Apache')
+makedepends=('rust' 'cargo')
+source=("https://github.com/danil0ws/klean/archive/v${pkgver}.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cd "klean-${pkgver}"
+    cargo build --release --locked
+}
+
+package() {
+    cd "klean-${pkgver}"
+    install -Dm755 target/release/klean "$pkgdir/usr/bin/klean"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/klean/README.md"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/klean/LICENSE"
+}

@@ -21,30 +21,33 @@ jobs:
 
       - name: Setup SSH for AUR
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
-          echo "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          printf '%s\n' "${{ secrets.AUR_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -t rsa,ecdsa,ed25519 aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Clone AUR repository
         run: |
+          set -euo pipefail
           git clone ssh://aur@aur.archlinux.org/klean.git aur-klean
+
+      - name: Update PKGBUILD and .SRCINFO
+        run: |
+          set -euo pipefail
           cd aur-klean
 
-      - name: Update PKGBUILD
-        run: |
-          cd aur-klean
-          
           VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          
-          # Download the source to calculate checksum
-          TEMP_DIR=$(mktemp -d)
-          wget https://github.com/danil0ws/klean/archive/v${VERSION}.tar.gz -O $TEMP_DIR/source.tar.gz
-          SHA256=$(sha256sum $TEMP_DIR/source.tar.gz | awk '{print $1}')
-          
-          cat > PKGBUILD << EOF
-          # Maintainer: klean maintainers
+          VERSION="${VERSION#v}"
+
+          # Builds from the tagged source tarball, so the checksum comes from it.
+          curl -fsSL -o /tmp/klean-source.tar.gz \
+            "https://github.com/danil0ws/klean/archive/v${VERSION}.tar.gz"
+          SHA256=$(sha256sum /tmp/klean-source.tar.gz | awk '{print $1}')
+          rm -f /tmp/klean-source.tar.gz
+
+          cat > PKGBUILD <<EOF
+          # Maintainer: klean contributors
           pkgname=klean
           pkgver=${VERSION}
           pkgrel=1
@@ -53,15 +56,14 @@ jobs:
           url="https://github.com/danil0ws/klean"
           license=('MIT' 'Apache')
           makedepends=('rust' 'cargo')
-          
           source=("https://github.com/danil0ws/klean/archive/v\${pkgver}.tar.gz")
           sha256sums=('${SHA256}')
-          
+
           build() {
               cd "klean-\${pkgver}"
               cargo build --release --locked
           }
-          
+
           package() {
               cd "klean-\${pkgver}"
               install -Dm755 target/release/klean "\$pkgdir/usr/bin/klean"
@@ -69,20 +71,34 @@ jobs:
               install -Dm644 LICENSE "\$pkgdir/usr/share/licenses/klean/LICENSE"
           }
           EOF
-          
-          rm -rf $TEMP_DIR
 
-      - name: Update .SRCINFO
-        run: |
-          cd aur-klean
-          makepkg --printsrcinfo > .SRCINFO
+          # .SRCINFO is normally produced by `makepkg --printsrcinfo`, which needs
+          # base-devel (unavailable on ubuntu runners), so emit it directly.
+          cat > .SRCINFO <<EOF
+          pkgbase = klean
+          	pkgdesc = Safe, efficient CLI for cleaning development environments
+          	pkgver = ${VERSION}
+          	pkgrel = 1
+          	url = https://github.com/danil0ws/klean
+          	arch = x86_64
+          	arch = aarch64
+          	license = MIT
+          	license = Apache
+          	makedepends = rust
+          	makedepends = cargo
+          	source = https://github.com/danil0ws/klean/archive/v${VERSION}.tar.gz
+          	sha256sums = ${SHA256}
+
+          pkgname = klean
+          EOF
 
       - name: Push to AUR
         run: |
+          set -euo pipefail
           cd aur-klean
-          
+
           git config user.name "klean bot"
           git config user.email "bot@aur.archlinux.org"
           git add PKGBUILD .SRCINFO
-          git commit -m "Update to v${{ inputs.version }}" || true
+          git commit -m "klean ${{ inputs.version }}" || echo "nothing to commit"
           git push

@@ -1,2 +1,1 @@
-# Nothing to do on uninstall
-# The binary is managed by Chocolatey
+# Nothing to do: Chocolatey removes the package directory and its shim.

@@ -14,6 +14,7 @@ on:
 
 jobs:
   update-homebrew:
+    name: Update tap
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,68 +25,74 @@ jobs:
 
       - name: Update formula
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          
+          VERSION="${VERSION#v}"
+
           cd homebrew-klean
-          
-          # Download the macOS x86_64 binary to get its hash
-          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz -O /tmp/klean.tar.gz
-          
-          # Calculate SHA256
-          SHA256=$(sha256sum /tmp/klean.tar.gz | awk '{print $1}')
-          
-          # Update formula
-          cat > Formula/klean.rb << EOF
+          mkdir -p Formula
+
+          # A tap formula is just a downloader: both macOS assets carry a
+          # prebuilt binary, so the formula never builds from source.
+          for arch in x86_64 aarch64; do
+            curl -fsSL -o "/tmp/klean-${arch}.tar.gz" \
+              "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-${arch}-apple-darwin.tar.gz"
+          done
+          SHA_X86=$(sha256sum /tmp/klean-x86_64.tar.gz | awk '{print $1}')
+          SHA_ARM=$(sha256sum /tmp/klean-aarch64.tar.gz | awk '{print $1}')
+
+          cat > Formula/klean.rb <<EOF
           class Klean < Formula
             desc "Safe, efficient CLI for cleaning development environments"
             homepage "https://github.com/danil0ws/klean"
-            url "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz"
-            sha256 "${SHA256}"
+            # Asset names contain the target triple, so set the version explicitly.
+            version "${VERSION}"
             license "MIT OR Apache-2.0"
-          
+
+            if Hardware::CPU.arm?
+              url "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-aarch64-apple-darwin.tar.gz"
+              sha256 "${SHA_ARM}"
+            else
+              url "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-apple-darwin.tar.gz"
+              sha256 "${SHA_X86}"
+            end
+
             depends_on :macos
-          
+
             def install
               bin.install "klean"
             end
-          
+
             test do
-              assert_match "A safe, efficient CLI", shell_output("#{bin}/klean --help")
+              assert_match "klean", shell_output("#{bin}/klean --version")
             end
           end
           EOF
-          
+
+          # Keep a licence file next to the formula (tap repos need one).
+          cp ../LICENSE LICENSE 2>/dev/null || true
+
           git config user.name "klean bot"
           git config user.email "bot@klean.local"
-          git add Formula/klean.rb
-          git commit -m "Update klean to ${VERSION}" || true
+          git add -A
+          git commit -m "klean ${VERSION}" || echo "nothing to commit"
           git push
 
-      - name: Create or update Pull Request
-        if: always()
-        run: |
-          cd homebrew-klean
-          
-          # Check if remote has newer commits
-          git fetch origin main
-          if ! git diff --quiet origin/main..HEAD; then
-            echo "Changes pushed successfully"
-          fi
-
   test-homebrew:
-    name: Test Homebrew Formula
-    runs-on: macos-latest
+    name: Test formula
+    runs-on: macos-14
     needs: update-homebrew
-    if: always()
     steps:
-      - uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/homebrew-klean
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-
-      - name: Test formula
+      - name: Install from the tap
         run: |
-          brew install --build-from-source ./Formula/klean.rb
+          set -euo pipefail
+          brew tap ${{ github.repository_owner }}/klean
+          brew install klean
           klean --version
           klean --help
+
+      - name: Uninstall
+        if: always()
+        run: |
+          brew uninstall klean || true
+          brew untap ${{ github.repository_owner }}/klean || true

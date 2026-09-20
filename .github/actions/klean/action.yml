@@ -1,0 +1,72 @@
+name: klean
+description: >-
+  Scan a checkout for build artifacts (node_modules, target, .venv, ...) and
+  optionally fail the build when the total exceeds a size budget.
+
+inputs:
+  path:
+    description: Directory to scan
+    required: false
+    default: '.'
+  max-size:
+    description: Fail the step when the total to clean exceeds this (e.g. 2GB)
+    required: false
+    default: ''
+  args:
+    description: Extra klean arguments (e.g. "--min-size 100MB")
+    required: false
+    default: ''
+  version:
+    description: klean version to install from crates.io (latest by default)
+    required: false
+    default: 'latest'
+  report:
+    description: Path for the JSON report
+    required: false
+    default: klean-report.json
+
+outputs:
+  total-bytes:
+    description: Total size of the found artifacts, in bytes
+    value: ${{ steps.scan.outputs.total }}
+  artifact-count:
+    description: Number of artifacts found
+    value: ${{ steps.scan.outputs.count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install klean
+      shell: bash
+      run: |
+        set -euo pipefail
+        if command -v klean >/dev/null 2>&1; then
+          echo "klean já disponível: $(klean --version)"
+          exit 0
+        fi
+        if [ "${{ inputs.version }}" = "latest" ]; then
+          cargo install klean --locked
+        else
+          cargo install klean --version "${{ inputs.version }}" --locked
+        fi
+
+    - name: Scan
+      id: scan
+      shell: bash
+      run: |
+        set -euo pipefail
+        klean --path "${{ inputs.path }}" --json list ${{ inputs.args }} | tee "${{ inputs.report }}"
+        total=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["total_bytes"])' "${{ inputs.report }}")
+        count=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["artifact_count"])' "${{ inputs.report }}")
+        echo "total=${total}" >> "$GITHUB_OUTPUT"
+        echo "count=${count}" >> "$GITHUB_OUTPUT"
+        echo "### klean: ${count} artifact(s), ${total} bytes" >> "$GITHUB_STEP_SUMMARY"
+
+    # klean exits 2 when the budget is exceeded, so the step (and the job) fails
+    # without any extra glue in the caller's workflow.
+    - name: Enforce budget
+      if: inputs.max-size != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        klean --path "${{ inputs.path }}" --fail-if-over "${{ inputs.max-size }}" ${{ inputs.args }} list > /dev/null

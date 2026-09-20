@@ -1,0 +1,3 @@
+[plugin]
+type = "exec"
+version = "0.2.0"

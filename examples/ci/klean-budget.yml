@@ -1,0 +1,46 @@
+# Example: gate a build on the size of the artifacts in the checkout.
+#
+# Copy to .github/workflows/ in the repository you want to police. Uses the
+# composite action from the klean repo, so nothing has to be installed first.
+name: Artifact budget
+
+on:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1' # every Monday
+
+jobs:
+  budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: danil0ws/klean/.github/actions/klean@main
+        with:
+          path: .
+          max-size: 2GB
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: klean-report
+          path: klean-report.json
+
+  # Same thing without the action: build the scanner straight from the repo.
+  self-hosted-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build klean
+        run: cargo install --path . --locked
+
+      - name: Fail when more than 2 GiB of artifacts pile up
+        run: klean --path . --fail-if-over 2GB --json list
+
+      - name: Report the current total in the job summary
+        if: always()
+        run: klean --path . --json list | python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"### {d[\"artifact_count\"]} artifacts, {d[\"total_human\"]}")' >> "$GITHUB_STEP_SUMMARY"

@@ -14,6 +14,7 @@ on:
 
 jobs:
   update-scoop:
+    name: Update bucket
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,26 +25,24 @@ jobs:
           repository: ${{ github.repository_owner }}/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           path: scoop-bucket
-
-      - name: Install jq
-        run: sudo apt-get install -y jq
+          fetch-depth: 0
 
       - name: Generate manifest
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          
+          VERSION="${VERSION#v}"
+
           cd scoop-bucket
-          
-          # Download binaries and calculate hashes
-          TEMP_DIR=$(mktemp -d)
-          
+          mkdir -p bucket
+
           # Windows x86_64
-          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/win.zip
-          WIN_HASH=$(sha256sum $TEMP_DIR/win.zip | awk '{print $1}')
-          
-          # Create manifest
-          cat > bucket/klean.json << EOF
+          curl -fsSL -o /tmp/klean-win.zip \
+            "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip"
+          WIN_HASH=$(sha256sum /tmp/klean-win.zip | awk '{print $1}')
+          rm -f /tmp/klean-win.zip
+
+          cat > bucket/klean.json <<EOF
           {
               "version": "${VERSION}",
               "description": "Safe, efficient CLI for cleaning development environments",
@@ -58,20 +57,19 @@ jobs:
               }
           }
           EOF
-          
-          rm -rf $TEMP_DIR
-          
+
+          python3 -m json.tool bucket/klean.json > /dev/null && echo "manifest is valid JSON"
+
           git config user.name "klean bot"
           git config user.email "bot@klean.local"
           git add bucket/klean.json
-          git commit -m "Update klean to ${VERSION}" || true
+          git commit -m "klean ${VERSION}" || echo "nothing to commit"
           git push
 
   validate-scoop:
-    name: Validate Scoop Manifest
+    name: Validate manifest
     runs-on: windows-latest
     needs: update-scoop
-    if: always()
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,15 +77,17 @@ jobs:
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       - name: Install Scoop
+        shell: pwsh
         run: |
-          iwr -useb get.scoop.sh | iex
-          scoop bucket add klean "$(Get-Location)"
+          Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+          Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+          & "$env:USERPROFILE\scoop\shims\scoop.cmd" --version
 
-      - name: Validate manifest
+      - name: Install from the bucket and run
+        shell: pwsh
         run: |
-          scoop search klean
-
-      - name: Test installation
-        run: |
-          scoop install klean
-          klean --version
+          $scoop = "$env:USERPROFILE\scoop\shims\scoop.cmd"
+          & $scoop bucket add kleanlocal "$PWD"
+          & $scoop install klean
+          & "$env:USERPROFILE\scoop\shims\klean.exe" --version
+          & "$env:USERPROFILE\scoop\shims\klean.exe" --help

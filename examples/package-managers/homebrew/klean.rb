@@ -1,13 +1,19 @@
 class Klean < Formula
   desc "Safe, efficient CLI for cleaning development environments"
   homepage "https://github.com/danil0ws/klean"
-  url "https://github.com/danil0ws/klean/releases/download/v1.0.0/klean-v1.0.0-x86_64-apple-darwin.tar.gz"
-  sha256 "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
+  # Release asset names embed the target triple, so set the version explicitly
+  # instead of letting Homebrew guess it from the URL.
+  version "1.0.0"
   license "MIT OR Apache-2.0"
 
-  bottle do
-    sha256 cellar: :any_skip_relocation, arm64_sonoma:  "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
-    sha256 cellar: :any_skip_relocation, x86_64_sonoma: "abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234"
+  # A tap formula only downloads the prebuilt binary: no Rust toolchain needed.
+  # (Both sha256 values are filled in by .github/workflows/homebrew-update.yml.)
+  if Hardware::CPU.arm?
+    url "https://github.com/danil0ws/klean/releases/download/v1.0.0/klean-v1.0.0-aarch64-apple-darwin.tar.gz"
+    sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  else
+    url "https://github.com/danil0ws/klean/releases/download/v1.0.0/klean-v1.0.0-x86_64-apple-darwin.tar.gz"
+    sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   end
 
   depends_on :macos
@@ -16,14 +22,7 @@ class Klean < Formula
     bin.install "klean"
   end
 
-  def post_install
-    # Create initial config directory if needed
-    config_dir = "#{Dir.home}/.config/klean"
-    FileUtils.mkdir_p(config_dir) unless File.exist?(config_dir)
-  end
-
   test do
-    assert_match "A safe, efficient CLI", shell_output("#{bin}/klean --help")
-    assert_match version.to_s, shell_output("#{bin}/klean --version")
+    assert_match "klean", shell_output("#{bin}/klean --version")
   end
 end

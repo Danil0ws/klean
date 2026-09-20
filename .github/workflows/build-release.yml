@@ -4,10 +4,20 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Existing tag to release (e.g. v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   build:
@@ -60,7 +70,7 @@ jobs:
 
       - name: Install cross
         if: matrix.use_cross
-        run: cargo install cross
+        run: cargo install cross --locked
 
       - name: Build
         run: |
@@ -79,6 +89,8 @@ jobs:
       - name: Create artifact directory
         run: mkdir -p artifacts
 
+      # Asset names are the contract every package manager workflow downloads.
+      # Do not change them without updating homebrew/scoop/chocolatey/winget.
       - name: Prepare artifact (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -86,18 +98,16 @@ jobs:
           cd artifacts
           tar czf "klean-${{ env.VERSION }}-${{ matrix.target }}.tar.gz" "${{ matrix.binary_name }}"
           rm "${{ matrix.binary_name }}"
-        env:
-          VERSION: ${{ github.ref_name }}
+        shell: bash
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         run: |
-          copy "target\${{ matrix.target }}\release\${{ matrix.binary_name }}" artifacts\
+          copy "target\\${{ matrix.target }}\\release\\${{ matrix.binary_name }}" artifacts\\
           cd artifacts
           7z a "klean-${{ env.VERSION }}-${{ matrix.target }}.zip" "${{ matrix.binary_name }}"
           del "${{ matrix.binary_name }}"
-        env:
-          VERSION: ${{ github.ref_name }}
+        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -112,9 +122,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: echo "version=${{ env.VERSION }}" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -125,6 +141,7 @@ jobs:
         run: |
           mkdir -p release-assets
           find artifacts -type f -exec cp {} release-assets/ \;
+          ls -l release-assets
 
       - name: Generate checksums
         run: |
@@ -133,9 +150,10 @@ jobs:
           cat SHA256SUMS
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: release-assets/*
+          tag_name: ${{ env.VERSION }}
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -158,42 +176,73 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - name: Keep Cargo.toml version in sync with the tag
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = .*/version = \"${VERSION}\"/" Cargo.toml
+          grep '^version' Cargo.toml
+
+      - name: Check if this version is already on crates.io
+        id: published
+        run: |
+          VERSION="${{ needs.create-release.outputs.version }}"
+          VERSION="${VERSION#v}"
+          if curl -sf "https://crates.io/api/v1/crates/klean/${VERSION}" > /dev/null; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish to crates.io
-        run: cargo publish --token ${{ secrets.CARGO_TOKEN }}
-        continue-on-error: true
+        if: steps.published.outputs.already == 'false'
+        run: cargo publish --token ${{ secrets.CARGO_TOKEN }} --allow-dirty
 
-  update-package-managers:
-    name: Update Package Managers
-    needs: create-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Extract version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-      - name: Trigger AUR update
-        run: |
-          gh workflow run aur-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        continue-on-error: true
-
-      - name: Trigger Scoop update
-        run: |
-          gh workflow run scoop-update.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Trigger Linux packages update
-        run: |
-          gh workflow run linux-packages.yml --repo danil0ws/klean -f version=${{ steps.version.outputs.VERSION }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+  # ---------------------------------------------------------------------------
+  # Package managers.
+  #
+  # Each of these is a reusable workflow (on: workflow_call) invoked directly by
+  # this release, instead of `gh workflow run` + polling. The old dispatcher
+  # needed extra token scopes and had already silently dropped a job
+  # (windows-packages.yml was never wired up, so Chocolatey/winget/mise never
+  # ran).
+  # ---------------------------------------------------------------------------
   update-homebrew:
-    name: Update Homebrew
+    name: Homebrew tap
     needs: create-release
     uses: ./.github/workflows/homebrew-update.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
+  update-scoop:
+    name: Scoop bucket
+    needs: create-release
+    uses: ./.github/workflows/scoop-update.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
+  update-aur:
+    name: AUR
+    needs: create-release
+    uses: ./.github/workflows/aur-update.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
+  update-linux-packages:
+    name: Linux packages (deb / rpm / Arch)
+    needs: create-release
+    uses: ./.github/workflows/linux-packages.yml
+    with:
+      version: ${{ github.ref_name }}
+    secrets: inherit
+
+  update-windows-packages:
+    name: Windows packages (Chocolatey / winget / mise)
+    needs: create-release
+    uses: ./.github/workflows/windows-packages.yml
     with:
       version: ${{ github.ref_name }}
     secrets: inherit

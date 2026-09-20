@@ -1,38 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Regenerated on every release by .github/workflows/windows-packages.yml
+     (<version>, <releaseNotes> and the asset URL/hash come from the tag). -->
 <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
   <metadata>
     <id>klean</id>
     <version>1.0.0</version>
-    <packageSourceUrl>https://github.com/klean-cli/chocolatey-klean</packageSourceUrl>
+    <packageSourceUrl>https://github.com/danil0ws/chocolatey-klean</packageSourceUrl>
     <owners>klean</owners>
     <title>klean</title>
     <authors>klean contributors</authors>
     <projectUrl>https://github.com/danil0ws/klean</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/danil0ws/klean/main/assets/icon.png</iconUrl>
     <copyright>2024 klean contributors</copyright>
     <licenseUrl>https://github.com/danil0ws/klean/blob/main/LICENSE</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/danil0ws/klean</projectSourceUrl>
     <docsUrl>https://github.com/danil0ws/klean/blob/main/README.md</docsUrl>
     <bugTrackerUrl>https://github.com/danil0ws/klean/issues</bugTrackerUrl>
-    <tags>development build cache cleanup artifacts developer-tools</tags>
+    <tags>cleaning development build cache artifacts developer-tools</tags>
     <summary>
       Safe, efficient CLI for cleaning development environments
     </summary>
     <description>
-      klean is a comprehensive tool inspired by npkill that safely removes build artifacts,
-      caches, and dependencies for Node.js, Python, Rust, Java, C#, PHP, Ruby, and 20+ other
-      programming languages. It includes an interactive TUI mode with safety features like
-      dry-run, .klignore rules, and automatic backup support.
-
-      Features:
-      - Multi-language artifact detection
-      - Interactive and CLI modes
-      - .klignore support (gitignore format)
-      - Dry-run for safe preview
-      - Backup directory option
-      - Size filtering
-      - Cross-platform support
+      klean removes build artifacts, caches and dependency directories
+      (node_modules, target, .venv, dist, ...) for 20+ languages. It reports one
+      directory per artifact (never recursing into a match) and can gate deletion
+      per project through klean.toml.
     </description>
     <releaseNotes>
       https://github.com/danil0ws/klean/releases/tag/v1.0.0

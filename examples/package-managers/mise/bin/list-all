@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# All released versions, oldest first. asdf/mise expect one space-separated line.
+set -euo pipefail
+
+REPO="${KLEAN_REPO:-danil0ws/klean}"
+
+curl -fsSL "https://api.github.com/repos/${REPO}/releases?per_page=100" |
+  grep -o '"tag_name": *"[^"]*"' |
+  sed 's/.*"v\{0,1\}\([0-9][^"]*\)"/\1/' |
+  sort -t. -k1,1n -k2,2n -k3,3n |
+  tr '\n' ' ' | sed 's/ $//'
+echo

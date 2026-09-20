@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO="${KLEAN_REPO:-danil0ws/klean}"
+
+curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" |
+  grep -o '"tag_name": *"[^"]*"' |
+  sed 's/.*"v\{0,1\}\([0-9][^"]*\)"/\1/'

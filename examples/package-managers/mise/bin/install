@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# download already placed the binary in $ASDF_INSTALL_PATH/bin, nothing to build.
+exit 0

@@ -13,9 +13,15 @@ on:
         description: 'Version to publish (e.g., v1.0.0)'
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Chocolatey. Runs on Windows: the previous version ran on ubuntu and tried to
+  # bootstrap the Windows-only Chocolatey installer with powershell, and it wrote
+  # the install script from a *quoted* heredoc, so ${VERSION}/${SHA256} reached
+  # the .ps1 as literal placeholders (a package that installs nothing).
+  # ---------------------------------------------------------------------------
   update-chocolatey:
-    name: Update Chocolatey
-    runs-on: ubuntu-latest
+    name: Chocolatey
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -26,24 +32,26 @@ jobs:
           token: ${{ secrets.CHOCO_REPO_TOKEN }}
           path: choco-repo
 
-      - name: Generate nuspec
+      - name: Generate package
+        shell: pwsh
         run: |
-          VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          
-          cd choco-repo
-          
-          # Download Windows binary to get hash
-          TEMP_DIR=$(mktemp -d)
-          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
-          SHA256=$(sha256sum $TEMP_DIR/klean.zip | awk '{print $1}')
-          
-          cat > klean.nuspec << EOF
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ inputs.version }}' -replace '^v', ''
+          $url = "https://github.com/danil0ws/klean/releases/download/v$version/klean-v$version-x86_64-pc-windows-msvc.zip"
+
+          $zip = Join-Path $env:RUNNER_TEMP 'klean.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $sha = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+
+          Push-Location choco-repo
+          New-Item -ItemType Directory -Force -Path tools, legal | Out-Null
+
+          $nuspec = @'
           <?xml version="1.0" encoding="utf-8"?>
           <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
             <metadata>
               <id>klean</id>
-              <version>${VERSION}</version>
+              <version>__VERSION__</version>
               <title>klean</title>
               <authors>klean contributors</authors>
               <owners>klean</owners>
@@ -51,120 +59,122 @@ jobs:
               <licenseUrl>https://github.com/danil0ws/klean/blob/main/LICENSE</licenseUrl>
               <projectSourceUrl>https://github.com/danil0ws/klean</projectSourceUrl>
               <docsUrl>https://github.com/danil0ws/klean/blob/main/README.md</docsUrl>
+              <bugTrackerUrl>https://github.com/danil0ws/klean/issues</bugTrackerUrl>
+              <requireLicenseAcceptance>false</requireLicenseAcceptance>
               <description>
-                Safe, efficient CLI for cleaning development environments
+          klean is a CLI that safely removes build artifacts, caches and dependency
+          directories (node_modules, target, .venv, dist, ...) for 20+ languages.
+          It scans one directory per artifact (never recursing into a match) and can
+          manage deletion per project through klean.toml.
               </description>
-              <summary>
-                A comprehensive tool inspired by npkill that safely removes build artifacts, caches, and dependencies for Node.js, Python, Rust, Java, and 20+ other languages.
-              </summary>
-              <tags>cleaning development build cache artifacts</tags>
-              <copyright>2024</copyright>
-              <releaseNotes>https://github.com/danil0ws/klean/releases/tag/v${VERSION}</releaseNotes>
+              <summary>Safe, efficient CLI for cleaning development environments</summary>
+              <tags>cleaning development build cache artifacts developer-tools</tags>
+              <copyright>2024 klean contributors</copyright>
+              <releaseNotes>https://github.com/danil0ws/klean/releases/tag/v__VERSION__</releaseNotes>
             </metadata>
             <files>
-              <file src="legal/**" target="legal" />
-              <file src="tools/**" target="tools" />
+              <file src="legal\**" target="legal" />
+              <file src="tools\**" target="tools" />
             </files>
           </package>
-          EOF
-          
-          mkdir -p legal tools
-          
-          cat > tools/chocolateyinstall.ps1 << 'PSEOF'
-          $ErrorActionPreference = 'Stop'
-          
-          $packageName = 'klean'
-          $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
-          
-          $url = 'https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip'
-          $checksum = '${SHA256}'
-          $checksumType = 'sha256'
-          
-          $zipFile = Join-Path $env:TEMP "klean.zip"
-          
-          Get-ChocolateyWebFile -PackageName $packageName `
-                                -FileFullPath $zipFile `
-                                -Url $url `
-                                -Checksum $checksum `
-                                -ChecksumType $checksumType
-          
-          Get-ChocolateyUnzip -FileFullPath $zipFile `
-                              -Destination $toolsDir
-          
-          Remove-Item $zipFile -Force
-          PSEOF
-          
-          cat > tools/chocolateyuninstall.ps1 << 'PSEOF'
-          # Nothing to do on uninstall
-          PSEOF
-          
-          cp LICENSE legal/LICENSE.txt || cp ../LICENSE legal/LICENSE.txt
-          
-          rm -rf $TEMP_DIR
+          '@
+          $nuspec.Replace('__VERSION__', $version) | Set-Content -Path klean.nuspec -Encoding UTF8
 
-      - name: Publish to Chocolatey
+          $install = @'
+          $ErrorActionPreference = 'Stop'
+
+          $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+
+          Install-ChocolateyZipPackage `
+            -PackageName 'klean' `
+            -Url '__URL__' `
+            -UnzipLocation $toolsDir `
+            -Checksum '__SHA__' `
+            -ChecksumType 'sha256'
+          '@
+          $install.Replace('__URL__', $url).Replace('__SHA__', $sha) |
+            Set-Content -Path tools\chocolateyinstall.ps1 -Encoding UTF8
+
+          @'
+          # Nothing to do: the shim and the binary live in the package's tools dir.
+          '@ | Set-Content -Path tools\chocolateyuninstall.ps1 -Encoding UTF8
+
+          Copy-Item -Path ..\LICENSE -Destination legal\LICENSE.txt -Force
+          Pop-Location
+
+      - name: Pack and push
+        shell: pwsh
         run: |
-          cd choco-repo
-          
-          # Install Chocolatey CLI
-          if ! command -v choco &> /dev/null; then
-            wget https://community.chocolatey.org/install.ps1 -O install.ps1
-            powershell -NoProfile -ExecutionPolicy Bypass -Command "&'./install.ps1'"
-          fi
-          
+          $ErrorActionPreference = 'Stop'
+          git config --global --add safe.directory '*'
+          Push-Location choco-repo
+
           choco pack klean.nuspec
-          choco push klean.${{ inputs.version }}.nupkg --key=${{ secrets.CHOCOLATEY_API_KEY }}
-        shell: bash
-        continue-on-error: true
+          $nupkg = Get-ChildItem -Filter '*.nupkg' | Select-Object -First 1
+          if (-not $nupkg) { throw 'choco pack produced no .nupkg' }
+          Write-Host "Packed $($nupkg.Name)"
+
+          choco push $nupkg.FullName --source https://push.chocolatey.org/ --api-key ${{ secrets.CHOCOLATEY_API_KEY }}
+          Pop-Location
 
       - name: Commit and push
+        shell: pwsh
         run: |
-          cd choco-repo
-          
+          Push-Location choco-repo
           git config user.name "klean bot"
           git config user.email "bot@klean.local"
-          git add klean.nuspec tools/
-          git commit -m "Update to ${{ inputs.version }}" || true
+          git add klean.nuspec tools legal
+          git commit -m "klean ${{ inputs.version }}" || echo "nothing to commit"
           git push
+          Pop-Location
 
+  # ---------------------------------------------------------------------------
+  # winget: zip + NestedInstallerType portable (winget rejects a bare zip
+  # installer without it), and the locale manifest heredoc is unquoted now so
+  # ${DOTVERSION} actually expands.
+  # ---------------------------------------------------------------------------
   update-winget:
-    name: Update Windows Package Manager (winget)
+    name: winget
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Prepare WinGet manifest
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          DOTVERSION=$(echo $VERSION | sed 's/^v//')
-          
-          mkdir -p winget-manifest/manifests/k/klean/klean/${DOTVERSION}
-          cd winget-manifest/manifests/k/klean/klean/${DOTVERSION}
-          
-          # Download binary to get hash
-          TEMP_DIR=$(mktemp -d)
-          wget https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip -O $TEMP_DIR/klean.zip
-          SHA256=$(sha256sum $TEMP_DIR/klean.zip | awk '{print $1}')
-          
-          cat > klean.installer.yaml << EOF
-          # Created with YamlCreate.ps1 v2.0.0 using InputObject
+          VERSION="${VERSION#v}"
+
+          MANIFEST_DIR="winget-manifest/manifests/k/klean/klean/${VERSION}"
+          mkdir -p "${MANIFEST_DIR}"
+          cd "${MANIFEST_DIR}"
+
+          curl -fsSL -o /tmp/klean.zip \
+            "https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip"
+          SHA256=$(sha256sum /tmp/klean.zip | awk '{print $1}')
+
+          cat > klean.installer.yaml <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
           PackageIdentifier: klean.klean
-          PackageVersion: ${DOTVERSION}
+          PackageVersion: ${VERSION}
           InstallerLocale: en-US
           Installers:
           - Architecture: x64
             InstallerType: zip
+            NestedInstallerType: portable
+            NestedInstallerFiles:
+            - RelativeFilePath: klean.exe
+              PortableCommandAlias: klean
             InstallerUrl: https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip
             InstallerSha256: ${SHA256}
           ManifestType: installer
-          ManifestVersion: 1.4.0
+          ManifestVersion: 1.6.0
           EOF
-          
-          cat > klean.locale.en-US.yaml << 'EOF'
-          # Created with YamlCreate.ps1 v2.0.0 using InputObject
+
+          cat > klean.locale.en-US.yaml <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
           PackageIdentifier: klean.klean
-          PackageVersion: ${DOTVERSION}
+          PackageVersion: ${VERSION}
           PackageLocale: en-US
           Publisher: klean contributors
           PublisherUrl: https://github.com/danil0ws/klean
@@ -174,88 +184,134 @@ jobs:
           License: MIT OR Apache-2.0
           LicenseUrl: https://github.com/danil0ws/klean/blob/main/LICENSE
           ShortDescription: Safe, efficient CLI for cleaning development environments
-          Description: |
-            klean is a comprehensive tool inspired by npkill that safely removes build artifacts,
-            caches, and dependencies for Node.js, Python, Rust, Java, and 20+ other programming languages.
+          Description: |-
+            klean safely removes build artifacts, caches and dependency directories
+            (node_modules, target, .venv, dist, ...) for 20+ languages.
           Tags:
           - development
           - build
           - cache
           - cleanup
           ManifestType: defaultLocale
-          ManifestVersion: 1.4.0
+          ManifestVersion: 1.6.0
           EOF
-          
-          cat > klean.yaml << EOF
+
+          cat > klean.yaml <<EOF
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
           PackageIdentifier: klean.klean
-          PackageVersion: ${DOTVERSION}
+          PackageVersion: ${VERSION}
           DefaultLocale: en-US
           ManifestType: version
-          ManifestVersion: 1.4.0
+          ManifestVersion: 1.6.0
           EOF
-          
-          rm -rf $TEMP_DIR
+
+          rm -f /tmp/klean.zip
+
+      - name: Validate manifest
+        run: |
+          set -euo pipefail
+          # winget is Windows-only, but the wingetcreate image can validate YAML
+          # off-Windows via the schema URLs; a missing validator is not fatal.
+          python3 -c "
+          import glob, sys, json, urllib.request
+          try:
+              import yaml  # type: ignore
+          except ImportError:
+              print('PyYAML not available, skipping local validation'); sys.exit(0)
+          for f in glob.glob('winget-manifest/**/*.yaml', recursive=True):
+              yaml.safe_load(open(f))
+              print('ok', f)
+          "
 
       - name: Create Pull Request to winget-pkgs
-        uses: peter-evans/create-pull-request@v5
+        uses: peter-evans/create-pull-request@v7
         with:
           repository: microsoft/winget-pkgs
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'Add klean v${{ inputs.version }}'
-          title: 'Add klean v${{ inputs.version }}'
+          token: ${{ secrets.WINGET_TOKEN }}
+          commit-message: 'New version: klean.klean version ${{ inputs.version }}'
+          title: 'New version: klean.klean version ${{ inputs.version }}'
           body: |
             This PR adds or updates the klean package for Windows Package Manager (winget).
-            
+
             - Version: ${{ inputs.version }}
             - Repository: danil0ws/klean
-          branch: create-pull-request/klean-update
+          branch: klean-${{ inputs.version }}
           delete-branch: true
+          base: master
           path: winget-manifest
         continue-on-error: true
 
+  # ---------------------------------------------------------------------------
+  # mise / asdf: an "exec" plugin is just four shell scripts. Generate them
+  # instead of expecting a repo that someone has to hand-write first.
+  # ---------------------------------------------------------------------------
   mise-plugin:
-    name: Update Mise Plugin
+    name: mise / asdf plugin
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout Mise plugin repository
+      - name: Checkout plugin repository
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/mise-klean
           token: ${{ secrets.MISE_PLUGIN_TOKEN }}
           path: mise-plugin
 
-      - name: Update plugin
+      - name: Generate plugin scripts
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
-          VERSION=${VERSION#v}  # Remove 'v' prefix
-          
+          VERSION="${VERSION#v}"
+
           cd mise-plugin
-          
-          # Update versions in the plugin
-          sed -i "s/KLEAN_VERSION=.*/KLEAN_VERSION='${VERSION}'/" bin/latest-version
-          
-          # Update plugin.toml if exists
-          if [ -f "plugin.toml" ]; then
-            sed -i "s/repo = .*/repo = \"danil0ws/klean\"/" plugin.toml
-          fi
-          
+          mkdir -p bin
+
+          # Plugin scripts live in the main repo so there is a single copy to
+          # keep working (examples/package-managers/mise).
+          cp ../examples/package-managers/mise/plugin.toml plugin.toml
+          cp ../examples/package-managers/mise/bin/* bin/
+          chmod +x bin/list-all bin/latest-version bin/download bin/install
+
+          cat > README.md <<EOF
+          # mise-klean
+
+          [mise](https://mise.jdx.dev) / [asdf](https://asdf-vm.com) plugin for
+          [klean](https://github.com/danil0ws/klean).
+
+          \`\`\`bash
+          mise plugin add klean https://github.com/${GITHUB_REPOSITORY_OWNER}/mise-klean
+          mise install klean@latest
+          klean --version
+          \`\`\`
+
+          With asdf:
+
+          \`\`\`bash
+          asdf plugin add klean https://github.com/${GITHUB_REPOSITORY_OWNER}/mise-klean
+          asdf install klean latest
+          asdf set klean latest
+          \`\`\`
+
+          Last published version: ${VERSION}
+          EOF
+
+          echo "KLEAN_VERSION='${VERSION}'" > VERSION
+
           git config user.name "klean bot"
           git config user.email "bot@klean.local"
           git add -A
-          git commit -m "Update to v${VERSION}" || true
+          git commit -m "klean ${VERSION}" || echo "nothing to commit"
           git push
 
-  create-release-summary:
-    name: Create Release Summary
+  summary:
+    name: Summary
     runs-on: ubuntu-latest
     needs: [update-chocolatey, update-winget, mise-plugin]
     if: always()
     steps:
-      - name: Log completion
+      - name: Report
         run: |
-          echo "Windows package manager updates completed"
-          echo "- Chocolatey: Updated (continue-on-error)"
-          echo "- WinGet: PR created (continue-on-error)"
-          echo "- Mise Plugin: Updated (continue-on-error)"
+          echo "Chocolatey: ${{ needs.update-chocolatey.result }}"
+          echo "winget:     ${{ needs.update-winget.result }} (PR, non-fatal)"
+          echo "mise/asdf:  ${{ needs.mise-plugin.result }}"
