@@ -102,9 +102,10 @@ fn serves_scan_json_and_the_page() {
     assert_eq!(doc["artifact_count"], 1);
     assert_eq!(doc["projects"][0]["artifacts"][0]["name"], "node_modules");
     assert_eq!(doc["total_bytes"], 4096);
+    // relative paths keep the platform separator
     assert_eq!(
         doc["projects"][0]["artifacts"][0]["relative_path"],
-        "proj/node_modules"
+        Path::new("proj").join("node_modules").display().to_string()
     );
 
     assert!(get(port, "/api/nope", None).starts_with("HTTP/1.1 404"));
@@ -124,13 +125,11 @@ fn clean_only_accepts_paths_from_the_current_scan() {
     assert!(response.starts_with("HTTP/1.1 409"), "{response}");
     assert!(victim.exists());
 
-    let good = root.join("proj/node_modules");
-    let response = post(
-        port,
-        "/api/clean",
-        &format!(r#"{{"paths":["{}"]}}"#, good.display()),
-        None,
-    );
+    let good = root.join("proj").join("node_modules");
+    // build the body with serde_json: a hand-written string breaks on Windows,
+    // where the path separators need escaping.
+    let body = serde_json::json!({ "paths": [good.display().to_string()] }).to_string();
+    let response = post(port, "/api/clean", &body, None);
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(!good.exists(), "artifact should be gone");
     assert!(victim.exists(), "project file must survive");
