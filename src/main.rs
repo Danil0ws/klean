@@ -9,6 +9,7 @@ use klean::ignore::IgnoreRules;
 use klean::patterns::get_default_patterns;
 use klean::plugins;
 use klean::scanner::{parse_size, Artifact, ArtifactScanner, ProjectGroup, ScanOutcome};
+use klean::trash;
 use klean::tui::{CleanContext, InteractiveMode};
 use klean::watch::{self, WatchOptions};
 use klean::web::{self, WebConfig};
@@ -39,6 +40,8 @@ fn main() -> Result<()> {
             return history::print_stats(&path, cli.json);
         }
         Mode::Plugins => return list_plugins(&cli),
+        Mode::Undo => return undo_last(),
+        Mode::Trash => return trash_report(cli.empty),
         _ => {}
     }
 
@@ -89,6 +92,29 @@ fn main() -> Result<()> {
         scanner = scanner.with_size_limits(None, Some(max_size));
     }
 
+    // Interactive mode scans inside the UI, so its loading screen can show what
+    // is being read; that means it must own the scan.
+    let is_tty = std::io::stdout().is_terminal();
+    if matches!(mode, Mode::Interactive) && is_tty && !cli.yes && !cli.dry_run {
+        let report = InteractiveMode::run_scan(
+            scanner,
+            CleanContext {
+                backup_dir: final_config.backup_dir.clone(),
+                root: root.clone(),
+                allow_system_paths: cli.allow_system_paths,
+            },
+        )?;
+
+        if !cli.quiet && report.cleaned > 0 {
+            println!(
+                "✓ {} liberados em {} item(ns) — `klean undo` desfaz o que foi para a lixeira",
+                humansize::format_size(report.freed, humansize::BINARY),
+                report.cleaned
+            );
+        }
+        return Ok(());
+    }
+
     // Modes that own the scan loop themselves.
     if matches!(mode, Mode::Serve) {
         let token = cli
@@ -126,7 +152,6 @@ fn main() -> Result<()> {
     }
 
     // Scan for artifacts, naming the directory being read while it happens.
-    let is_tty = std::io::stdout().is_terminal();
     let spinner = if is_tty && !cli.quiet && !cli.json {
         let bar = ProgressBar::new_spinner();
         bar.set_style(
@@ -237,35 +262,20 @@ fn main() -> Result<()> {
         );
     }
 
-    // No TTY (pipe, CI, cron): the interactive UI cannot run.
+    // No TTY (pipe, CI, cron): the interactive UI cannot run. With --yes the
+    // deletion is already authorized, so clean headlessly instead of only
+    // listing — `klean --yes | tee log` used to do nothing but list.
     let mode = if matches!(mode, Mode::Interactive) && !is_tty {
-        Mode::List
+        if cli.yes || cli.dry_run {
+            Mode::Cli
+        } else {
+            Mode::List
+        }
     } else {
         mode
     };
 
     let selected_artifacts = match mode {
-        Mode::Interactive if !cli.yes && !cli.dry_run => {
-            // The TUI cleans on its own, so the numbers stay on the screen
-            // instead of scrolling away when it closes.
-            let report = InteractiveMode::run(
-                artifacts.clone(),
-                CleanContext {
-                    backup_dir: final_config.backup_dir.clone(),
-                    root: root.clone(),
-                    allow_system_paths: cli.allow_system_paths,
-                },
-            )?;
-
-            if !cli.quiet && report.cleaned > 0 {
-                println!(
-                    "✓ {} liberados em {} item(ns)",
-                    humansize::format_size(report.freed, humansize::BINARY),
-                    report.cleaned
-                );
-            }
-            None
-        }
         Mode::List => {
             if !cli.json {
                 list_artifacts(&groups, &root)?;
@@ -288,12 +298,16 @@ fn main() -> Result<()> {
     if let Some(to_clean) = selected_artifacts {
         if !to_clean.is_empty() {
             let project_count = group_artifacts(&to_clean).len();
-            let action_label = if final_config.backup_dir.is_some() {
+            let action_label = if cli.trash {
+                "trash"
+            } else if final_config.backup_dir.is_some() {
                 "backup"
             } else {
                 "delete"
             };
-            let action = if let Some(backup_dir) = &final_config.backup_dir {
+            let action = if cli.trash {
+                CleanerAction::Trash
+            } else if let Some(backup_dir) = &final_config.backup_dir {
                 if !cli.quiet && !cli.json {
                     println!("📦 Backing up to {}", backup_dir.display());
                 }
@@ -334,6 +348,68 @@ fn finish(over_limit: bool) -> Result<()> {
     if over_limit {
         std::process::exit(EXIT_OVER_LIMIT);
     }
+    Ok(())
+}
+
+/// `klean undo`: move the newest trash session back where it came from.
+fn undo_last() -> Result<()> {
+    match trash::undo_last()? {
+        None => println!("nada para desfazer — a lixeira do klean está vazia"),
+        Some(report) => {
+            for (path, _) in &report.restored {
+                println!("↩ {}", path.display());
+            }
+            if !report.restored.is_empty() {
+                println!(
+                    "✓ {} item(ns) de volta — {}",
+                    report.restored.len(),
+                    humansize::format_size(report.bytes, humansize::BINARY)
+                );
+            }
+            for (path, reason) in &report.failed {
+                println!("✗ {} — {}", path.display(), reason);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `klean trash [--empty]`: what an undo can still bring back.
+fn trash_report(empty: bool) -> Result<()> {
+    if empty {
+        let (sessions, bytes) = trash::empty()?;
+        println!(
+            "🧹 lixeira esvaziada: {} sessão(ões), {} liberados",
+            sessions,
+            humansize::format_size(bytes, humansize::BINARY)
+        );
+        return Ok(());
+    }
+
+    let sessions = trash::list()?;
+    if sessions.is_empty() {
+        println!("lixeira vazia — nada para desfazer");
+        return Ok(());
+    }
+
+    let bytes: u64 = sessions.iter().map(|session| session.bytes).sum();
+    println!(
+        "🗑  lixeira do klean: {} sessão(ões), {} — `klean undo` traz a última de volta",
+        sessions.len(),
+        humansize::format_size(bytes, humansize::BINARY)
+    );
+    for session in &sessions {
+        println!(
+            "  {} — {} item(ns), {}",
+            trash::human_age(session.age_secs),
+            session.items,
+            humansize::format_size(session.bytes, humansize::BINARY)
+        );
+    }
+    println!(
+        "  (sessões com mais de {} dias saem sozinhas; `klean trash --empty` libera agora)",
+        trash::KEEP_DAYS
+    );
     Ok(())
 }
 
@@ -390,6 +466,7 @@ fn print_clean_json(result: &CleanResult, dry_run: bool) -> Result<()> {
         "dry_run": dry_run,
         "deleted": result.deleted,
         "backed_up": result.backed_up,
+        "trashed": result.trashed,
         "failed": result.failed,
         "freed_bytes": result.total_size_freed,
         "freed_human": humansize::format_size(result.total_size_freed, humansize::BINARY),

@@ -45,9 +45,9 @@ runs:
           exit 0
         fi
         if [ "${{ inputs.version }}" = "latest" ]; then
-          cargo install klean --locked
+          cargo install --git "https://github.com/${{ github.action_repository }}" --locked
         else
-          cargo install klean --version "${{ inputs.version }}" --locked
+          cargo install --git "https://github.com/${{ github.action_repository }}" --tag "v${{ inputs.version }}" --locked
         fi
 
     - name: Scan

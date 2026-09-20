@@ -1,4 +1,5 @@
 use crate::scanner::{is_sensitive_system_path, Artifact};
+use crate::trash;
 use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
@@ -7,6 +8,8 @@ use std::path::{Path, PathBuf};
 pub enum CleanerAction {
     Delete,
     Backup,
+    /// Move into the klean trash so `klean undo` can bring it back.
+    Trash,
 }
 
 pub struct Cleaner {
@@ -154,10 +157,13 @@ impl Cleaner {
         let mut result = CleanResult {
             deleted: 0,
             backed_up: 0,
+            trashed: 0,
             failed: 0,
             total_size_freed: 0,
             errors: Vec::new(),
         };
+        // Opened lazily: a run that only deletes never creates a session.
+        let mut trash_session: Option<trash::Session> = None;
 
         for artifact in artifacts {
             if dry_run {
@@ -197,10 +203,32 @@ impl Cleaner {
                         }
                     }
                 }
+                CleanerAction::Trash => {
+                    let session = match &mut trash_session {
+                        Some(session) => session,
+                        None => trash_session.insert(trash::Session::open()?),
+                    };
+                    match session.store(&artifact.path, artifact.size) {
+                        Ok(()) => {
+                            result.trashed += 1;
+                            result.total_size_freed += artifact.size;
+                        }
+                        Err(e) => {
+                            result.failed += 1;
+                            result
+                                .errors
+                                .push(format!("{}: {}", artifact.path.display(), e));
+                        }
+                    }
+                }
             }
 
             pb.inc(1);
             pb.set_message(artifact.name.clone());
+        }
+
+        if let Some(session) = &trash_session {
+            session.finish()?;
         }
 
         pb.finish_with_message("✓ Cleaning complete!");
@@ -273,6 +301,8 @@ impl Cleaner {
 pub struct CleanResult {
     pub deleted: usize,
     pub backed_up: usize,
+    /// Moved into the klean trash, reversible with `klean undo`.
+    pub trashed: usize,
     pub failed: usize,
     pub total_size_freed: u64,
     pub errors: Vec<String>,
@@ -285,12 +315,30 @@ impl CleanResult {
         println!("╠════════════════════════════════════╣");
         println!("║ Deleted:       {:>18} ║", self.deleted);
         println!("║ Backed up:     {:>18} ║", self.backed_up);
+        if self.trashed > 0 {
+            println!("║ In trash:      {:>18} ║", self.trashed);
+        }
         println!("║ Failed:        {:>18} ║", self.failed);
+
+        // Nothing was really freed while the items sit in the trash.
+        let size_label = if self.deleted + self.backed_up == 0 && self.trashed > 0 {
+            "Size moved:"
+        } else {
+            "Size freed:"
+        };
         println!(
-            "║ Size freed:    {:>18} ║",
+            "║ {:<15}{:>18} ║",
+            size_label,
             humansize::format_size(self.total_size_freed, humansize::BINARY)
         );
         println!("╚════════════════════════════════════╝");
+
+        if self.trashed > 0 {
+            println!(
+                "🗑  {} item(ns) na lixeira — `klean undo` traz de volta, `klean trash --empty` libera de vez",
+                self.trashed
+            );
+        }
 
         if !self.errors.is_empty() {
             println!("\n⚠️  Errors encountered:");

@@ -133,12 +133,32 @@ klean --path ~/projects
 - `Space` - Select/deselect
 - `A` - Select all
 - `D` - Deselect all
-- `Enter` - Clean selected (confirms, then shows the summary in place)
+- `Enter` / `Y` - Clean selected (confirms, then shows the summary in place)
+- `T` - (in the confirmation) move the selection to the trash instead — undoable
+- `U` - (on the summary) undo the trashed run: everything comes back
 - `Q` - Quit
 
 The UI does not close after cleaning: the summary stays on screen, the deleted
 rows leave the list, the freed total accumulates in the footer, and `Q` exits
-when you are done. While scanning, a spinner names the directory being read.
+when you are done. While it scans, the screen shows the logo, the folder being
+read, how many folders were walked and how long it has been running.
+
+### Undo
+
+Deleting is not reversible, so the confirmation gives you a second option.
+
+```bash
+# interactive: Enter/Y deletes, T moves to the klean trash, U on the summary
+# brings it back. From the shell, after the fact:
+klean undo              # restore the last trashed session
+klean trash             # what an undo can still bring back
+klean trash --empty     # free that space now
+klean --trash --yes     # scripted clean that stays undoable
+```
+
+The trash lives in `<config>/klean/trash` (override with `KLEAN_TRASH`).
+Sessions older than 7 days are purged on the next trashed run, so the space is
+reclaimed on its own; until then the items are still on disk.
 
 Every release also carries a single version-bump command:
 `scripts/bump-version.sh <x.y.z>` rewrites `Cargo.toml`, `Cargo.lock`, the

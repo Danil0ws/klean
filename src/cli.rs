@@ -47,6 +47,11 @@ pub struct Cli {
     #[arg(long, value_name = "PATH")]
     pub backup_dir: Option<PathBuf>,
 
+    /// Move items into the klean trash instead of deleting them (`klean undo`
+    /// puts them back, `klean trash --empty` frees the space for real)
+    #[arg(long)]
+    pub trash: bool,
+
     /// Operation mode
     #[arg(value_enum, default_value = "interactive")]
     pub mode: Option<Mode>,
@@ -95,6 +100,10 @@ pub struct Cli {
     /// `watch`: run a single pass and exit (cron/CI friendly)
     #[arg(long)]
     pub once: bool,
+
+    /// `trash`: throw the contents away now instead of waiting for the purge
+    #[arg(long)]
+    pub empty: bool,
 }
 
 #[derive(ValueEnum, Clone, Debug)]
@@ -120,6 +129,12 @@ pub enum Mode {
     /// List the pattern plugins that are loaded
     #[value(name = "plugins")]
     Plugins,
+    /// Move the last cleaned items back from the trash (undo)
+    #[value(name = "undo")]
+    Undo,
+    /// Show the trash: what a `klean undo` can still bring back
+    #[value(name = "trash")]
+    Trash,
 }
 
 impl Cli {

@@ -1,4 +1,4 @@
-use crate::cleaner::{CleanResult, CleanerAction};
+use crate::cleaner::CleanResult;
 use crate::scanner::Artifact;
 use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -19,6 +19,8 @@ pub enum InputMode {
     Normal,
     Selection,
     Confirmation,
+    /// The scan runs on a worker thread and the loading screen is up.
+    Scanning,
     /// Last clean result is on screen; any key returns to the list.
     Summary,
     Exiting,
@@ -31,18 +33,6 @@ pub struct CleanContext {
     pub allow_system_paths: bool,
 }
 
-impl CleanContext {
-    /// Backup when a backup directory is configured, delete otherwise — the
-    /// same rule the CLI path uses.
-    pub fn action(&self) -> CleanerAction {
-        if self.backup_dir.is_some() {
-            CleanerAction::Backup
-        } else {
-            CleanerAction::Delete
-        }
-    }
-}
-
 /// Numbers of one clean run, kept on screen until the user dismisses them.
 #[derive(Debug, Clone)]
 pub struct LastResult {
@@ -50,7 +40,43 @@ pub struct LastResult {
     pub backed_up: usize,
     pub failed: usize,
     pub freed: u64,
+    /// Items sitting in the klean trash: `U` can bring them back.
+    pub trashed: usize,
     pub errors: Vec<String>,
+}
+
+/// Live scan progress: written by the worker thread, read once per frame.
+#[derive(Debug)]
+pub struct ScanFeed {
+    pub started: std::time::Instant,
+    /// Directory being read right now.
+    pub current: Option<PathBuf>,
+    pub dirs: usize,
+    pub done: bool,
+    /// Artifacts, or the message to show instead of a list.
+    pub outcome: Option<Result<Vec<Artifact>, String>>,
+}
+
+impl Default for ScanFeed {
+    fn default() -> Self {
+        ScanFeed::new()
+    }
+}
+
+impl ScanFeed {
+    pub fn new() -> Self {
+        ScanFeed {
+            started: std::time::Instant::now(),
+            current: None,
+            dirs: 0,
+            done: false,
+            outcome: None,
+        }
+    }
+
+    pub fn elapsed(&self) -> std::time::Duration {
+        self.started.elapsed()
+    }
 }
 
 pub struct TuiState {
@@ -204,14 +230,17 @@ impl TuiState {
     pub fn apply_clean_result(&mut self, result: &CleanResult) {
         self.artifacts.retain(|artifact| artifact.path.exists());
         let count = self.artifacts.len();
-        self.selected_artifacts = vec![true; count];
+        // Nothing stays ticked: the run is over, and leaving everything marked
+        // makes the whole list look deleted (and Enter would clean it again).
+        self.selected_artifacts = vec![false; count];
         self.selected = self.selected.min(count.saturating_sub(1));
         if count == 0 {
             self.table_state.select(None);
         } else {
             self.sync_selection();
         }
-        self.total_selected_size = self.artifacts.iter().map(|a| a.size).sum();
+        self.total_selected_size = 0;
+        self.update_total_size();
         self.session_freed += result.total_size_freed;
         self.session_cleaned += result.deleted + result.backed_up;
         self.notice = None;
@@ -220,15 +249,127 @@ impl TuiState {
             backed_up: result.backed_up,
             failed: result.failed,
             freed: result.total_size_freed,
+            trashed: result.trashed,
             errors: result.errors.clone(),
         });
         self.input_mode = InputMode::Summary;
     }
+
+    /// After an undo (`U`): the restored items go back into the list and the
+    /// session totals give back what they had taken.
+    pub fn apply_undo(&mut self, restored: &[(PathBuf, u64)]) {
+        let freed: u64 = restored.iter().map(|(_, size)| size).sum();
+
+        for (path, size) in restored {
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("item")
+                .to_string();
+            self.artifacts.push(Artifact {
+                path: path.clone(),
+                size: *size,
+                pattern_name: name.clone(),
+                name,
+                modified: None,
+                is_safe: true,
+                project: path.parent().unwrap_or(path.as_path()).to_path_buf(),
+            });
+        }
+
+        self.artifacts
+            .sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.path.cmp(&b.path)));
+        self.selected_artifacts = vec![false; self.artifacts.len()];
+        self.selected = self.selected.min(self.artifacts.len().saturating_sub(1));
+        if self.artifacts.is_empty() {
+            self.table_state.select(None);
+        } else {
+            self.sync_selection();
+        }
+        self.total_selected_size = 0;
+        self.session_freed = self.session_freed.saturating_sub(freed);
+        self.session_cleaned = self.session_cleaned.saturating_sub(restored.len());
+        self.last_result = None;
+        self.notice = Some(format!("↩ {} item(ns) de volta", restored.len()));
+        self.input_mode = InputMode::Normal;
+    }
 }
+
+/// Six-line logo; a narrow terminal gets the plain word instead.
+const LOGO: [&str; 6] = [
+    r" ██╗  ██╗██╗     ███████╗ █████╗ ███╗   ██╗",
+    r" ██║ ██╔╝██║     ██╔════╝██╔══██╗████╗  ██║",
+    r" █████╔╝ ██║     █████╗  ███████║██╔██╗ ██║",
+    r" ██╔═██╗ ██║     ██╔══╝  ██╔══██║██║╚██╗██║",
+    r" ██║  ██╗███████╗███████╗██║  ██║██║ ╚████║",
+    r" ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝",
+];
+
+const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub struct Tui;
 
 impl Tui {
+    /// Loading screen: logo, the directory being read, counters, elapsed time.
+    pub fn render_scanning(f: &mut Frame, feed: &ScanFeed, root: &Path) {
+        let area = f.area();
+        let elapsed = feed.elapsed();
+        let frame = SPINNER[(elapsed.as_millis() / 90) as usize % SPINNER.len()];
+
+        let mut lines: Vec<Line> = Vec::new();
+        if area.width >= 50 && area.height >= 14 {
+            lines.extend(
+                LOGO.iter()
+                    .map(|line| Line::from(Span::styled(*line, Style::default().fg(Color::Cyan)))),
+            );
+            lines.push(Line::from(""));
+        } else {
+            lines.push(Line::from(Span::styled(
+                "klean",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+            lines.push(Line::from(""));
+        }
+
+        lines.push(Line::from(vec![
+            Span::styled(format!("{frame} "), Style::default().fg(Color::Cyan)),
+            Span::raw("lendo pastas e arquivos"),
+        ]));
+
+        let seconds = elapsed.as_secs_f32();
+        let rate = if seconds >= 0.5 {
+            format!(" · {:.0} pastas/s", feed.dirs as f32 / seconds)
+        } else {
+            String::new()
+        };
+        lines.push(Line::from(Span::styled(
+            format!("{} pastas{rate} · {}", feed.dirs, clock(elapsed)),
+            Style::default().fg(Color::DarkGray),
+        )));
+
+        lines.push(Line::from(""));
+        if let Some(current) = &feed.current {
+            let shown = current.strip_prefix(root).unwrap_or(current);
+            lines.push(Line::from(Span::styled(
+                truncate_middle(
+                    &shown.display().to_string(),
+                    area.width.saturating_sub(8) as usize,
+                ),
+                Style::default().fg(Color::Gray),
+            )));
+        }
+
+        let rect = centered_rect(
+            area,
+            64.min(area.width.saturating_sub(2)).max(20),
+            (lines.len() as u16 + 2).min(area.height),
+        );
+        f.render_widget(Clear, rect);
+        f.render_widget(Paragraph::new(lines).alignment(Alignment::Center), rect);
+    }
+
     pub fn render_list(f: &mut Frame, state: &mut TuiState) {
         // The footer gains a line per extra message (session total, notice).
         let extra_lines =
@@ -416,17 +557,24 @@ impl Tui {
             Line::from(""),
             Line::from(vec![
                 Span::styled(
-                    "Y",
+                    "Enter/Y",
                     Style::default()
                         .fg(Color::Green)
                         .add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("es  "),
+                Span::raw(" limpar   "),
+                Span::styled(
+                    "T",
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::raw(" lixeira (dá para desfazer)   "),
                 Span::styled(
                     "N",
                     Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw("o"),
+                Span::raw(" cancelar"),
             ]),
         ];
 
@@ -462,7 +610,12 @@ impl Tui {
             Line::from(format!("Backups         {}", result.backed_up)),
             Line::from(format!("Falhas          {}", result.failed)),
             Line::from(format!(
-                "Espaço liberado {}",
+                "{} {}",
+                if result.trashed > 0 && result.deleted + result.backed_up == 0 {
+                    "Na lixeira     "
+                } else {
+                    "Espaço liberado"
+                },
                 humansize::format_size(result.freed, humansize::BINARY)
             )),
             Line::from(Span::styled(
@@ -473,6 +626,15 @@ impl Tui {
                 Style::default().add_modifier(Modifier::BOLD),
             )),
         ];
+
+        if result.trashed > 0 {
+            lines.push(Line::from(Span::styled(
+                format!("U desfaz — {} item(ns) voltam", result.trashed),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )));
+        }
 
         if let Some(error) = result.errors.first() {
             lines.push(Line::from(Span::styled(
@@ -495,6 +657,17 @@ impl Tui {
 
         f.render_widget(Clear, dialog_area);
         f.render_widget(dialog, dialog_area);
+    }
+}
+
+/// `mm:ss`, hour-aware, for the loading screen.
+fn clock(elapsed: std::time::Duration) -> String {
+    let total = elapsed.as_secs();
+    let (hours, minutes, seconds) = (total / 3600, (total % 3600) / 60, total % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes:02}:{seconds:02}")
     }
 }
 
@@ -597,6 +770,7 @@ mod tests {
         let result = CleanResult {
             deleted: 1,
             backed_up: 0,
+            trashed: 0,
             failed: 1,
             total_size_freed: 4096,
             errors: vec![format!("{}: boom", kept.display())],
@@ -605,13 +779,41 @@ mod tests {
 
         assert_eq!(s.artifacts.len(), 1);
         assert_eq!(s.artifacts[0].path, kept);
-        assert!(s.selected_artifacts[0], "a falha fica marcada para retry");
+        assert!(
+            !s.selected_artifacts[0],
+            "a lista não fica toda marcada depois de limpar"
+        );
         assert_eq!(s.selected, 0);
-        assert_eq!(s.total_selected_size, 1);
+        assert_eq!(s.total_selected_size, 0);
         assert_eq!(s.session_freed, 4096);
         assert_eq!(s.session_cleaned, 1);
         assert_eq!(s.input_mode, InputMode::Summary);
         assert_eq!(s.last_result.as_ref().map(|r| r.failed), Some(1));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn an_undo_puts_the_items_back_and_gives_the_totals_back() {
+        let base = std::env::temp_dir().join("klean-tui-undo");
+        let restored = base.join("app/node_modules");
+        std::fs::create_dir_all(&restored).unwrap();
+
+        let mut s = state(0);
+        s.session_freed = 4096;
+        s.session_cleaned = 1;
+
+        s.apply_undo(&[(restored.clone(), 4096)]);
+
+        assert_eq!(s.artifacts.len(), 1);
+        assert_eq!(s.artifacts[0].path, restored);
+        assert_eq!(s.artifacts[0].name, "node_modules");
+        assert_eq!(s.artifacts[0].size, 4096);
+        assert_eq!(s.session_freed, 0, "o total da sessão é devolvido");
+        assert_eq!(s.session_cleaned, 0);
+        assert!(!s.selected_artifacts[0], "volta desmarcado");
+        assert_eq!(s.input_mode, InputMode::Normal);
+        assert!(s.notice.is_some());
 
         let _ = std::fs::remove_dir_all(&base);
     }
