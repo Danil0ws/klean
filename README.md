@@ -140,13 +140,22 @@ klean --path ~/projects
 - `↑↓` / mouse wheel - Navigate one row
 - `PgUp` / `PgDn` - Move one screen
 - `Home` / `End` - Jump to first/last
-- `Space` - Select/deselect
+- `Space` / `X` / click - Select/deselect (Space then moves to the next row)
 - `A` - Select all
+- `I` - Invert the selection
 - `D` - Deselect all
-- `Enter` / `Y` - Clean selected (confirms, then shows the summary in place)
-- `T` - (in the confirmation) move the selection to the trash instead — undoable
+- `Enter` - Open the confirmation for the selected items
+- In the confirmation: `←` `→` / `Tab` pick a button and `Enter` presses it, or
+  go straight with `Y` (delete), `T` (trash, undoable) or `N` / `Esc` (cancel)
+- `Esc` - (while cleaning) stop before the next item; nothing is left half-deleted
 - `U` - (on the summary) undo the trashed run: everything comes back
 - `Q` - Quit
+
+Every toggle lights up its row and says in the footer what was marked and how
+big it is. Once confirmed, the cleaning screen shows a progress gauge, the item
+and the entry inside it being removed right now, and a log of what is already
+gone. The summary then shows what was freed, how long it took, a breakdown by
+kind (`node_modules`, `target`, ...), the biggest item and any failures.
 
 The UI does not close after cleaning: the summary stays on screen, the deleted
 rows leave the list, the freed total accumulates in the footer, and `Q` exits

@@ -4,7 +4,10 @@ use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CleanerAction {
     Delete,
     Backup,
@@ -20,7 +23,34 @@ pub struct Cleaner {
     /// No progress bar and no warnings on stdout/stderr: the TUI owns the
     /// screen, and indicatif drawing over it leaves the bar printed on top.
     silent: bool,
+    /// Live feed of what is being removed (the TUI's cleaning screen).
+    progress: Option<CleanProgressFn>,
+    /// Checked between artifacts: an artifact is never left half-deleted.
+    cancel: Option<Arc<AtomicBool>>,
 }
+
+/// One step of a clean run, as it happens.
+#[derive(Debug)]
+pub enum CleanEvent<'a> {
+    /// Artifact `index` (position in the list passed to `clean`) starts.
+    Started {
+        index: usize,
+        artifact: &'a Artifact,
+    },
+    /// A top-level entry inside the artifact is about to be removed.
+    Entry {
+        path: &'a Path,
+        done: usize,
+        total: usize,
+    },
+    /// Artifact `index` is gone, or `error` says why it is not.
+    Finished {
+        index: usize,
+        error: Option<&'a str>,
+    },
+}
+
+pub type CleanProgressFn = Box<dyn Fn(CleanEvent<'_>) + Send + Sync>;
 
 impl Cleaner {
     pub fn new(
@@ -34,6 +64,8 @@ impl Cleaner {
             allow_system_paths,
             root: None,
             silent: false,
+            progress: None,
+            cancel: None,
         }
     }
 
@@ -51,6 +83,30 @@ impl Cleaner {
     pub fn with_silent(mut self, silent: bool) -> Self {
         self.silent = silent;
         self
+    }
+
+    /// Report every artifact (and every entry inside it) as it is removed.
+    pub fn with_progress(mut self, progress: CleanProgressFn) -> Self {
+        self.progress = Some(progress);
+        self
+    }
+
+    /// Stop before the next artifact once `cancel` turns true.
+    pub fn with_cancel(mut self, cancel: Arc<AtomicBool>) -> Self {
+        self.cancel = Some(cancel);
+        self
+    }
+
+    fn report(&self, event: CleanEvent<'_>) {
+        if let Some(progress) = &self.progress {
+            progress(event);
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel
+            .as_ref()
+            .is_some_and(|cancel| cancel.load(Ordering::Relaxed))
     }
 
     fn root_is_sensitive(&self) -> bool {
@@ -165,12 +221,22 @@ impl Cleaner {
         // Opened lazily: a run that only deletes never creates a session.
         let mut trash_session: Option<trash::Session> = None;
 
-        for artifact in artifacts {
+        for (index, artifact) in artifacts.into_iter().enumerate() {
+            if self.cancelled() {
+                break;
+            }
+            self.report(CleanEvent::Started {
+                index,
+                artifact: &artifact,
+            });
+            let errors_before = result.errors.len();
+
             if dry_run {
                 result.deleted += 1;
                 result.total_size_freed += artifact.size;
                 pb.inc(1);
                 pb.set_message(format!("[DRY RUN] {}", artifact.path.display()));
+                self.report(CleanEvent::Finished { index, error: None });
                 continue;
             }
 
@@ -223,6 +289,10 @@ impl Cleaner {
                 }
             }
 
+            self.report(CleanEvent::Finished {
+                index,
+                error: result.errors.get(errors_before).map(String::as_str),
+            });
             pb.inc(1);
             pb.set_message(artifact.name.clone());
         }
@@ -238,6 +308,13 @@ impl Cleaner {
 
     /// Delete an artifact permanently
     fn delete_artifact(&self, artifact: &Artifact) -> Result<()> {
+        // `symlink_metadata` does not follow links: a symlinked artifact takes
+        // the plain path below, which removes the link and never its target.
+        let real_dir = fs::symlink_metadata(&artifact.path).is_ok_and(|meta| meta.is_dir());
+        if real_dir && self.progress.is_some() {
+            return self.delete_entries(&artifact.path);
+        }
+
         if artifact.path.is_dir() {
             fs::remove_dir_all(&artifact.path)
                 .context(format!("Failed to delete directory: {:?}", artifact.path))
@@ -245,6 +322,38 @@ impl Cleaner {
             fs::remove_file(&artifact.path)
                 .context(format!("Failed to delete file: {:?}", artifact.path))
         }
+    }
+
+    /// Remove a directory one top-level entry at a time so the progress feed can
+    /// name what is going. Each entry goes through `remove_dir_all` /
+    /// `remove_file`, neither of which follows symlinks.
+    fn delete_entries(&self, dir: &Path) -> Result<()> {
+        let entries = fs::read_dir(dir)
+            .and_then(|entries| entries.collect::<std::io::Result<Vec<_>>>())
+            .context(format!("Failed to read directory: {:?}", dir))?;
+        let total = entries.len();
+
+        for (done, entry) in entries.iter().enumerate() {
+            let path = entry.path();
+            self.report(CleanEvent::Entry {
+                path: &path,
+                done,
+                total,
+            });
+            let file_type = entry.file_type();
+            let removed = if file_type.as_ref().is_ok_and(|t| t.is_dir()) {
+                fs::remove_dir_all(&path)
+            } else {
+                // A symlink to a directory needs `remove_dir` on Windows.
+                fs::remove_file(&path).or_else(|error| match file_type {
+                    Ok(t) if t.is_symlink() => fs::remove_dir(&path),
+                    _ => Err(error),
+                })
+            };
+            removed.context(format!("Failed to delete: {:?}", path))?;
+        }
+
+        fs::remove_dir(dir).context(format!("Failed to delete directory: {:?}", dir))
     }
 
     /// Backup an artifact by moving it
@@ -389,5 +498,102 @@ mod tests {
         let cleaner = Cleaner::new(CleanerAction::Delete, None, false);
         assert!(cleaner.delete_artifact(&artifact).is_ok());
         assert!(!test_file.exists());
+    }
+
+    fn artifact(path: &Path, project: &Path) -> Artifact {
+        Artifact {
+            path: path.to_path_buf(),
+            size: 10,
+            name: "node_modules".to_string(),
+            pattern_name: "node_modules".to_string(),
+            modified: None,
+            is_safe: true,
+            project: project.to_path_buf(),
+        }
+    }
+
+    #[test]
+    fn progress_names_each_entry_and_never_follows_symlinks() {
+        let temp_dir = TempDir::new().unwrap();
+        let modules = temp_dir.path().join("app/node_modules");
+        fs::create_dir_all(modules.join("react/lib")).unwrap();
+        fs::write(modules.join("react/lib/index.js"), "x").unwrap();
+        fs::write(modules.join(".package-lock.json"), "{}").unwrap();
+
+        // A link inside the artifact pointing at work that must survive.
+        let precious = temp_dir.path().join("precious");
+        fs::create_dir_all(&precious).unwrap();
+        fs::write(precious.join("keep.txt"), "keep").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&precious, modules.join("linked")).unwrap();
+
+        let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Arc::clone(&events);
+        let cleaner =
+            Cleaner::new(CleanerAction::Delete, None, true).with_progress(Box::new(move |event| {
+                let line = match event {
+                    CleanEvent::Started { index, .. } => format!("start {index}"),
+                    CleanEvent::Entry { path, total, .. } => format!(
+                        "entry {} of {total}",
+                        path.file_name().unwrap().to_string_lossy()
+                    ),
+                    CleanEvent::Finished { index, error } => {
+                        format!("done {index} {}", error.is_some())
+                    }
+                };
+                sink.lock().unwrap().push(line);
+            }));
+
+        let result = cleaner
+            .clean(
+                vec![artifact(&modules, &temp_dir.path().join("app"))],
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(result.deleted, 1);
+        assert!(!modules.exists());
+        assert!(
+            precious.join("keep.txt").exists(),
+            "symlink target survives"
+        );
+
+        let events = events.lock().unwrap();
+        assert_eq!(events.first().map(String::as_str), Some("start 0"));
+        assert_eq!(events.last().map(String::as_str), Some("done 0 false"));
+        assert!(events.iter().any(|e| e.starts_with("entry react of")));
+    }
+
+    #[test]
+    fn a_cancelled_run_stops_before_the_next_artifact() {
+        let temp_dir = TempDir::new().unwrap();
+        let first = temp_dir.path().join("a/node_modules");
+        let second = temp_dir.path().join("b/node_modules");
+        fs::create_dir_all(&first).unwrap();
+        fs::create_dir_all(&second).unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let trigger = Arc::clone(&cancel);
+        let cleaner = Cleaner::new(CleanerAction::Delete, None, true)
+            .with_cancel(Arc::clone(&cancel))
+            .with_progress(Box::new(move |event| {
+                if matches!(event, CleanEvent::Finished { .. }) {
+                    trigger.store(true, Ordering::Relaxed);
+                }
+            }));
+
+        let result = cleaner
+            .clean(
+                vec![
+                    artifact(&first, &temp_dir.path().join("a")),
+                    artifact(&second, &temp_dir.path().join("b")),
+                ],
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(result.deleted, 1);
+        assert!(!first.exists());
+        assert!(second.exists(), "the second artifact is left untouched");
     }
 }
