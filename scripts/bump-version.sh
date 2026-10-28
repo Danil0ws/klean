@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Bump klean's version in every file that carries it, or verify they agree.
 #
-#   scripts/bump-version.sh 1.5.2     # rewrite every copy
+#   scripts/bump-version.sh 1.5.3     # rewrite every copy
 #   scripts/bump-version.sh --check   # CI: fail when a copy drifted
 #
 # Cargo.toml is the source of truth: the script reads the old version from it

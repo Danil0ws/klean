@@ -87,7 +87,7 @@ jobs:
         shell: pwsh
         run: |
           $scoop = "$env:USERPROFILE\scoop\shims\scoop.cmd"
-          & $scoop bucket add kleanlocal "$PWD"
+          & $scoop bucket add kleanlocal "https://github.com/klean-cli/scoop-bucket"
           & $scoop install klean
           & "$env:USERPROFILE\scoop\shims\klean.exe" --version
           & "$env:USERPROFILE\scoop\shims\klean.exe" --help
