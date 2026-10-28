@@ -10,7 +10,7 @@ use klean::patterns::get_default_patterns;
 use klean::plugins;
 use klean::scanner::{parse_size, Artifact, ArtifactScanner, ProjectGroup, ScanOutcome};
 use klean::trash;
-use klean::tui::{CleanContext, InteractiveMode};
+use klean::tui::{run_globals, CleanContext, InteractiveMode};
 use klean::watch::{self, WatchOptions};
 use klean::web::{self, WebConfig};
 use std::io::IsTerminal;
@@ -42,6 +42,24 @@ fn main() -> Result<()> {
         Mode::Plugins => return list_plugins(&cli),
         Mode::Undo => return undo_last(),
         Mode::Trash => return trash_report(cli.empty),
+        Mode::Globals => {
+            let report = run_globals(cli.dry_run)?;
+            if report.removed > 0 && !cli.quiet {
+                println!(
+                    "✓ {} pacote(s) removido(s){}",
+                    report.removed,
+                    if report.freed > 0 {
+                        format!(
+                            " — {} liberados",
+                            humansize::format_size(report.freed, humansize::BINARY)
+                        )
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            return Ok(());
+        }
         _ => {}
     }
 

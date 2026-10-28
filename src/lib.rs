@@ -3,6 +3,7 @@
 pub mod cleaner;
 pub mod cli;
 pub mod config;
+pub mod globals;
 pub mod history;
 pub mod ignore;
 pub mod patterns;
