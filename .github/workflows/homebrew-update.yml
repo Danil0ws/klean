@@ -87,6 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           brew tap klean-cli/klean
+          brew trust klean-cli/klean
           brew install klean
           klean --version
           klean --help
