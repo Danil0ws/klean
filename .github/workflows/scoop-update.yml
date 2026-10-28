@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Scoop bucket
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/scoop-bucket
+          repository: klean-cli/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           path: scoop-bucket
           fetch-depth: 0
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/scoop-bucket
+          repository: klean-cli/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       - name: Install Scoop

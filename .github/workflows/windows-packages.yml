@@ -28,7 +28,7 @@ jobs:
       - name: Checkout Chocolatey repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/chocolatey-klean
+          repository: klean-cli/chocolatey-klean
           token: ${{ secrets.CHOCO_REPO_TOKEN }}
           path: choco-repo
 
@@ -254,7 +254,7 @@ jobs:
       - name: Checkout plugin repository
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/mise-klean
+          repository: klean-cli/mise-klean
           token: ${{ secrets.MISE_PLUGIN_TOKEN }}
           path: mise-plugin
 

@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/homebrew-klean
+          repository: klean-cli/homebrew-klean
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: homebrew-klean
 
@@ -86,7 +86,7 @@ jobs:
       - name: Install from the tap
         run: |
           set -euo pipefail
-          brew tap ${{ github.repository_owner }}/klean
+          brew tap klean-cli/klean
           brew install klean
           klean --version
           klean --help
@@ -95,4 +95,4 @@ jobs:
         if: always()
         run: |
           brew uninstall klean || true
-          brew untap ${{ github.repository_owner }}/klean || true
+          brew untap klean-cli/klean || true
