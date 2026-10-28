@@ -135,6 +135,12 @@ pub enum Mode {
     /// Show the trash: what a `klean undo` can still bring back
     #[value(name = "trash")]
     Trash,
+    /// List and remove globally installed packages (npm, cargo, pip)
+    #[value(name = "globals")]
+    Globals,
+    /// Check for a new klean version and self-update
+    #[value(name = "update")]
+    Update,
 }
 
 impl Cli {

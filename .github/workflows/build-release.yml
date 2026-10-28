@@ -72,6 +72,10 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --locked
 
+      - name: Update lock file
+        run: cargo update
+        shell: bash
+
       - name: Build
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
@@ -103,10 +107,10 @@ jobs:
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         run: |
-          copy "target\\${{ matrix.target }}\\release\\${{ matrix.binary_name }}" artifacts\\
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" artifacts/
           cd artifacts
           7z a "klean-${{ env.VERSION }}-${{ matrix.target }}.zip" "${{ matrix.binary_name }}"
-          del "${{ matrix.binary_name }}"
+          rm "${{ matrix.binary_name }}"
         shell: bash
 
       - name: Upload artifact
@@ -193,6 +197,9 @@ jobs:
           else
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Update lock file
+        run: cargo update
 
       - name: Publish to crates.io
         if: steps.published.outputs.already == 'false'

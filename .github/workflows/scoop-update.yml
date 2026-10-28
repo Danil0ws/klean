@@ -22,7 +22,7 @@ jobs:
       - name: Checkout Scoop bucket
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/scoop-bucket
+          repository: klean-cli/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           path: scoop-bucket
           fetch-depth: 0
@@ -73,7 +73,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          repository: ${{ github.repository_owner }}/scoop-bucket
+          repository: klean-cli/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       - name: Install Scoop
@@ -87,7 +87,7 @@ jobs:
         shell: pwsh
         run: |
           $scoop = "$env:USERPROFILE\scoop\shims\scoop.cmd"
-          & $scoop bucket add kleanlocal "$PWD"
+          & $scoop bucket add kleanlocal "https://github.com/klean-cli/scoop-bucket"
           & $scoop install klean
           & "$env:USERPROFILE\scoop\shims\klean.exe" --version
           & "$env:USERPROFILE\scoop\shims\klean.exe" --help
