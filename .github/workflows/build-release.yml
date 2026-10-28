@@ -198,6 +198,9 @@ jobs:
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Update lock file
+        run: cargo update
+
       - name: Publish to crates.io
         if: steps.published.outputs.already == 'false'
         run: cargo publish --token ${{ secrets.CARGO_TOKEN }} --allow-dirty
