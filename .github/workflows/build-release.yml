@@ -72,6 +72,10 @@ jobs:
         if: matrix.use_cross
         run: cargo install cross --locked
 
+      - name: Update lock file
+        run: cargo update
+        shell: bash
+
       - name: Build
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
