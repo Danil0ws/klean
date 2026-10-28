@@ -10,7 +10,7 @@ use klean::patterns::get_default_patterns;
 use klean::plugins;
 use klean::scanner::{parse_size, Artifact, ArtifactScanner, ProjectGroup, ScanOutcome};
 use klean::trash;
-use klean::tui::{run_globals, CleanContext, InteractiveMode};
+use klean::tui::{run_globals, run_menu, CleanContext, InteractiveMode, MenuChoice};
 use klean::watch::{self, WatchOptions};
 use klean::web::{self, WebConfig};
 use std::io::IsTerminal;
@@ -114,23 +114,52 @@ fn main() -> Result<()> {
     // is being read; that means it must own the scan.
     let is_tty = std::io::stdout().is_terminal();
     if matches!(mode, Mode::Interactive) && is_tty && !cli.yes && !cli.dry_run {
-        let report = InteractiveMode::run_scan(
-            scanner,
-            CleanContext {
-                backup_dir: final_config.backup_dir.clone(),
-                root: root.clone(),
-                allow_system_paths: cli.allow_system_paths,
-            },
-        )?;
+        let version = env!("CARGO_PKG_VERSION");
+        let choice = run_menu(version)?;
+        match choice {
+            MenuChoice::Quit => return Ok(()),
+            MenuChoice::Stats => {
+                let path = history::history_path()?;
+                return history::print_stats(&path, cli.json);
+            }
+            MenuChoice::Globals => {
+                let report = run_globals(cli.dry_run)?;
+                if report.removed > 0 && !cli.quiet {
+                    println!(
+                        "✓ {} pacote(s) removido(s){}",
+                        report.removed,
+                        if report.freed > 0 {
+                            format!(
+                                " — {} liberados",
+                                humansize::format_size(report.freed, humansize::BINARY)
+                            )
+                        } else {
+                            String::new()
+                        }
+                    );
+                }
+                return Ok(());
+            }
+            MenuChoice::Clean => {
+                let report = InteractiveMode::run_scan(
+                    scanner,
+                    CleanContext {
+                        backup_dir: final_config.backup_dir.clone(),
+                        root: root.clone(),
+                        allow_system_paths: cli.allow_system_paths,
+                    },
+                )?;
 
-        if !cli.quiet && report.cleaned > 0 {
-            println!(
-                "✓ {} liberados em {} item(ns) — `klean undo` desfaz o que foi para a lixeira",
-                humansize::format_size(report.freed, humansize::BINARY),
-                report.cleaned
-            );
+                if !cli.quiet && report.cleaned > 0 {
+                    println!(
+                        "✓ {} liberados em {} item(ns) — `klean undo` desfaz o que foi para a lixeira",
+                        humansize::format_size(report.freed, humansize::BINARY),
+                        report.cleaned
+                    );
+                }
+                return Ok(());
+            }
         }
-        return Ok(());
     }
 
     // Modes that own the scan loop themselves.

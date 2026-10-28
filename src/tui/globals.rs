@@ -1,4 +1,4 @@
-//! Interactive TUI for managing global npm/cargo/pip packages.
+//! Interactive TUI for managing global npm/cargo/pip/brew/binary packages.
 
 use anyhow::Result;
 use crossterm::{
@@ -15,13 +15,14 @@ use ratatui::{
     widgets::{Block, Borders, Cell, Clear, Gauge, Paragraph, Row, Table, TableState},
     Frame, Terminal,
 };
-use std::collections::BTreeSet;
+use std::cmp::Reverse;
+use std::collections::{BTreeSet, HashMap};
 use std::io::stdout;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::globals::{scan_all, uninstall, GlobalPackage, Manager};
+use crate::globals::{check_updates, scan_all, uninstall, GlobalPackage, Manager};
 
 pub struct GlobalsReport {
     pub removed: usize,
@@ -45,6 +46,11 @@ struct State {
     remove_log: Vec<String>,
     remove_idx: usize,
     report: GlobalsReport,
+    sort_by_size: bool,
+    updates: HashMap<String, String>,
+    update_scan: Arc<Mutex<Option<HashMap<String, String>>>>,
+    update_scan_done: Arc<AtomicBool>,
+    update_scanning: bool,
 }
 
 impl State {
@@ -62,6 +68,11 @@ impl State {
                 removed: 0,
                 freed: 0,
             },
+            sort_by_size: false,
+            updates: HashMap::new(),
+            update_scan: Arc::new(Mutex::new(None)),
+            update_scan_done: Arc::new(AtomicBool::new(false)),
+            update_scanning: false,
         }
     }
 
@@ -98,6 +109,49 @@ impl State {
             .iter()
             .filter_map(|&i| self.packages.get(i).cloned())
             .collect()
+    }
+
+    fn sort_packages(&mut self) {
+        if self.sort_by_size {
+            self.packages.sort_by_key(|p| Reverse(p.size_bytes));
+        } else {
+            self.packages.sort_by(|a, b| {
+                a.manager
+                    .label()
+                    .cmp(b.manager.label())
+                    .then(a.name.cmp(&b.name))
+            });
+        }
+        self.selected.clear();
+        self.table.select(if self.packages.is_empty() {
+            None
+        } else {
+            Some(0)
+        });
+    }
+
+    fn start_update_check(&mut self) {
+        if self.update_scanning {
+            return;
+        }
+        self.update_scanning = true;
+        self.update_scan_done.store(false, Ordering::SeqCst);
+        let packages_clone = self.packages.clone();
+        let result = Arc::clone(&self.update_scan);
+        let done = Arc::clone(&self.update_scan_done);
+        std::thread::spawn(move || {
+            let updates = check_updates(&packages_clone);
+            *result.lock().unwrap() = Some(updates);
+            done.store(true, Ordering::SeqCst);
+        });
+    }
+
+    fn apply_updates_to_packages(&mut self) {
+        for pkg in &mut self.packages {
+            if let Some(latest) = self.updates.get(&pkg.update_key()) {
+                pkg.update_available = Some(latest.clone());
+            }
+        }
     }
 }
 
@@ -139,23 +193,23 @@ pub fn run_globals(dry_run: bool) -> Result<GlobalsReport> {
             if let Ok(mut guard) = scan_result.lock() {
                 if let Some(pkgs) = guard.take() {
                     state.packages = pkgs;
-                    state.packages.sort_by(|a, b| {
-                        a.manager
-                            .label()
-                            .cmp(b.manager.label())
-                            .then(a.name.cmp(&b.name))
-                    });
-                    state.table.select(if state.packages.is_empty() {
-                        None
-                    } else {
-                        Some(0)
-                    });
+                    state.sort_packages();
                     state.ui = UiState::Listing;
                 }
             }
         }
 
-        // Step through removal without blocking on key events
+        // Absorb update check result when ready
+        if state.update_scanning && state.update_scan_done.load(Ordering::SeqCst) {
+            let updates = state.update_scan.lock().ok().and_then(|mut g| g.take());
+            if let Some(updates) = updates {
+                state.updates = updates;
+                state.apply_updates_to_packages();
+                state.update_scanning = false;
+            }
+        }
+
+        // Step through removal without blocking
         if state.ui == UiState::Removing {
             let targets = state.selected_packages();
             if state.remove_idx < targets.len() {
@@ -207,6 +261,11 @@ pub fn run_globals(dry_run: bool) -> Result<GlobalsReport> {
                     KeyCode::Up | KeyCode::Char('k') => state.move_cursor(-1),
                     KeyCode::Char(' ') => state.toggle_current(),
                     KeyCode::Char('a') => state.select_all(),
+                    KeyCode::Char('s') => {
+                        state.sort_by_size = !state.sort_by_size;
+                        state.sort_packages();
+                    }
+                    KeyCode::Char('u') => state.start_update_check(),
                     KeyCode::Enter if !state.selected.is_empty() => {
                         state.ui = UiState::Confirming;
                     }
@@ -269,24 +328,52 @@ fn render(f: &mut Frame, state: &mut State) {
         UiState::Done => render_done(f, state, chunks[1]),
     }
 
-    let footer_text = match state.ui {
-        UiState::Scanning => " Escaneando… ",
-        UiState::Listing => {
-            " ↑↓/jk navegar  Espaço selecionar  a tudo/nada  Enter confirmar  q sair "
+    let update_status = if state.update_scanning {
+        " ⟳ verificando atualizações… "
+    } else {
+        let count = state
+            .packages
+            .iter()
+            .filter(|p| p.update_available.is_some())
+            .count();
+        if count > 0 {
+            "⬆ updates disponíveis "
+        } else {
+            ""
         }
-        UiState::Confirming => " y/Enter confirmar remoção  n/Esc cancelar ",
-        UiState::Removing => " Removendo… ",
-        UiState::Done => " Qualquer tecla para sair ",
+    };
+
+    let sort_label = if state.sort_by_size {
+        "↕tamanho"
+    } else {
+        "↕gerenc."
+    };
+
+    let footer_text = match state.ui {
+        UiState::Scanning => " Escaneando… ".to_string(),
+        UiState::Listing => format!(
+            " ↑↓/jk  Espaço  a tudo  {} s  u updates  Enter confirmar  q sair {}",
+            sort_label, update_status
+        ),
+        UiState::Confirming => " y/Enter confirmar remoção  n/Esc cancelar ".to_string(),
+        UiState::Removing => " Removendo… ".to_string(),
+        UiState::Done => " Qualquer tecla para sair ".to_string(),
+    };
+    let footer_style = if state.update_scanning {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::DarkGray)
     };
     let footer = Paragraph::new(footer_text)
-        .style(Style::default().fg(Color::DarkGray))
+        .style(footer_style)
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(footer, chunks[2]);
 }
 
 fn render_scanning(f: &mut Frame, area: Rect) {
-    let p = Paragraph::new("\n\n  🔍 Escaneando pacotes globais (npm, cargo, pip)…")
-        .block(Block::default().borders(Borders::ALL));
+    let p =
+        Paragraph::new("\n\n  🔍 Escaneando pacotes globais (npm, cargo, pip, brew, binários)…")
+            .block(Block::default().borders(Borders::ALL));
     f.render_widget(p, area);
 }
 
@@ -319,18 +406,31 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
                 Manager::Npm => Color::Red,
                 Manager::Cargo => Color::Yellow,
                 Manager::Pip => Color::Blue,
+                Manager::Brew => Color::Green,
+                Manager::Binary => Color::Magenta,
             };
             let row_style = if is_sel {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default()
             };
+
+            let version_cell = if let Some(ref latest) = pkg.update_available {
+                Cell::from(format!("{} ⬆{}", pkg.version, latest)).style(
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Cell::from(pkg.version.as_str()).style(Style::default().fg(Color::DarkGray))
+            };
+
             Row::new(vec![
                 Cell::from(checkbox),
                 Cell::from(format!("{} {}", pkg.manager.icon(), pkg.manager.label()))
                     .style(Style::default().fg(mgr_color)),
                 Cell::from(pkg.name.as_str()),
-                Cell::from(pkg.version.as_str()).style(Style::default().fg(Color::DarkGray)),
+                version_cell,
                 Cell::from(pkg.size_string()).style(Style::default().fg(Color::Cyan)),
             ])
             .style(row_style)
@@ -338,23 +438,27 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
         .collect();
 
     let sel = state.selected.len();
-    let title = if sel > 0 {
-        format!(
-            " {} pacotes  ({} selecionado(s)) ",
-            state.packages.len(),
-            sel
-        )
-    } else {
-        format!(" {} pacotes ", state.packages.len())
-    };
+    let updates_count = state
+        .packages
+        .iter()
+        .filter(|p| p.update_available.is_some())
+        .count();
+    let mut title_parts = vec![format!(" {} pacotes", state.packages.len())];
+    if sel > 0 {
+        title_parts.push(format!("  ({} selecionado(s))", sel));
+    }
+    if updates_count > 0 {
+        title_parts.push(format!("  ⬆ {} com update", updates_count));
+    }
+    let title = title_parts.join("");
 
     let table = Table::new(
         rows,
         [
             Constraint::Length(2),
-            Constraint::Length(12),
-            Constraint::Min(24),
             Constraint::Length(14),
+            Constraint::Min(24),
+            Constraint::Length(18),
             Constraint::Length(10),
         ],
     )

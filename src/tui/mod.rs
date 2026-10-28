@@ -14,9 +14,11 @@ use std::time::{Duration, Instant};
 
 pub mod globals;
 pub mod interactive;
+pub mod menu;
 
 pub use globals::run_globals;
 pub use interactive::InteractiveMode;
+pub use menu::{run_menu, MenuChoice};
 
 /// How long a toggled row stays lit.
 const FLASH: Duration = Duration::from_millis(450);
