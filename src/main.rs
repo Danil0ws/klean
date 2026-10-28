@@ -11,6 +11,7 @@ use klean::plugins;
 use klean::scanner::{parse_size, Artifact, ArtifactScanner, ProjectGroup, ScanOutcome};
 use klean::trash;
 use klean::tui::{run_globals, run_menu, CleanContext, InteractiveMode, MenuChoice};
+use klean::update;
 use klean::watch::{self, WatchOptions};
 use klean::web::{self, WebConfig};
 use std::io::IsTerminal;
@@ -59,6 +60,9 @@ fn main() -> Result<()> {
                 );
             }
             return Ok(());
+        }
+        Mode::Update => {
+            return update::self_update(cli.dry_run);
         }
         _ => {}
     }

@@ -11,5 +11,6 @@ pub mod plugins;
 pub mod scanner;
 pub mod trash;
 pub mod tui;
+pub mod update;
 pub mod watch;
 pub mod web;
