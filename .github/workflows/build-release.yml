@@ -103,10 +103,10 @@ jobs:
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
         run: |
-          copy "target\\${{ matrix.target }}\\release\\${{ matrix.binary_name }}" artifacts\\
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" artifacts/
           cd artifacts
           7z a "klean-${{ env.VERSION }}-${{ matrix.target }}.zip" "${{ matrix.binary_name }}"
-          del "${{ matrix.binary_name }}"
+          rm "${{ matrix.binary_name }}"
         shell: bash
 
       - name: Upload artifact
