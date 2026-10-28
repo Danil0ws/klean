@@ -26,6 +26,7 @@ pub enum MenuChoice {
     Clean,
     Globals,
     Stats,
+    Update,
     Quit,
 }
 
@@ -38,26 +39,41 @@ const LOGO: [&str; 6] = [
     r" ╚═╝  ╚═╝╚══════╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═══╝",
 ];
 
-const ITEMS: &[(MenuChoice, &str, &str)] = &[
+/// Static items always shown (index = display number - 1).
+const BASE_ITEMS: &[(MenuChoice, &str, &str)] = &[
     (
         MenuChoice::Clean,
-        "Limpar artefatos",
+        "Clean artifacts",
         "node_modules, target, .cache, dist, …",
     ),
     (
         MenuChoice::Globals,
-        "Pacotes globais",
-        "npm, cargo, pip, brew, binários",
+        "Global packages",
+        "npm, cargo, pip, brew, binaries",
     ),
-    (MenuChoice::Stats, "Estatísticas", "histórico de limpeza"),
-    (MenuChoice::Quit, "Sair", ""),
+    (MenuChoice::Stats, "Statistics", "cleanup history"),
+    (MenuChoice::Quit, "Quit", ""),
 ];
 
 struct State {
     cursor: usize,
-    /// Background version check result (None = still checking).
     version_info: Arc<Mutex<Option<VersionInfo>>>,
     version_done: Arc<AtomicBool>,
+}
+
+impl State {
+    /// Returns the version info only after the background check completes.
+    fn version_info(&self) -> Option<VersionInfo> {
+        if self.version_done.load(Ordering::SeqCst) {
+            self.version_info.lock().ok().and_then(|g| g.clone())
+        } else {
+            None
+        }
+    }
+
+    fn menu_len(&self, has_update: bool) -> usize {
+        BASE_ITEMS.len() + if has_update { 1 } else { 0 }
+    }
 }
 
 struct TermGuard;
@@ -97,7 +113,11 @@ pub fn run_menu(version: &str) -> Result<MenuChoice> {
     };
 
     loop {
-        terminal.draw(|f| render(f, &state, version))?;
+        let vi = state.version_info();
+        let has_update = vi.as_ref().map(|v| v.update_available).unwrap_or(false);
+        let menu_len = state.menu_len(has_update);
+
+        terminal.draw(|f| render(f, &state, version, vi.as_ref()))?;
 
         if !event::poll(Duration::from_millis(100))? {
             continue;
@@ -111,18 +131,20 @@ pub fn run_menu(version: &str) -> Result<MenuChoice> {
                     }
                 }
                 KeyCode::Down | KeyCode::Char('j') => {
-                    if state.cursor + 1 < ITEMS.len() {
+                    if state.cursor + 1 < menu_len {
                         state.cursor += 1;
                     }
                 }
                 KeyCode::Char('1') => return Ok(MenuChoice::Clean),
                 KeyCode::Char('2') => return Ok(MenuChoice::Globals),
                 KeyCode::Char('3') => return Ok(MenuChoice::Stats),
-                KeyCode::Char('4') | KeyCode::Char('q') | KeyCode::Esc => {
-                    return Ok(MenuChoice::Quit)
-                }
+                KeyCode::Char('4') if !has_update => return Ok(MenuChoice::Quit),
+                KeyCode::Char('4') if has_update => return Ok(MenuChoice::Update),
+                KeyCode::Char('5') if has_update => return Ok(MenuChoice::Quit),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(MenuChoice::Quit),
                 KeyCode::Enter => {
-                    return Ok(ITEMS[state.cursor].0.clone());
+                    let choice = item_at(state.cursor, has_update);
+                    return Ok(choice);
                 }
                 _ => {}
             }
@@ -130,22 +152,26 @@ pub fn run_menu(version: &str) -> Result<MenuChoice> {
     }
 }
 
-fn render(f: &mut Frame, state: &State, version: &str) {
+fn item_at(idx: usize, has_update: bool) -> MenuChoice {
+    // Items: 0=Clean 1=Globals 2=Stats [3=Update if avail] last=Quit
+    if !has_update || idx < 3 {
+        BASE_ITEMS[idx].0.clone()
+    } else if idx == 3 {
+        MenuChoice::Update
+    } else {
+        MenuChoice::Quit
+    }
+}
+
+fn render(f: &mut Frame, state: &State, version: &str, vi: Option<&VersionInfo>) {
     let size = f.area();
 
-    // Read version info without blocking (best-effort).
-    let vi: Option<VersionInfo> = if state.version_done.load(Ordering::SeqCst) {
-        state.version_info.lock().ok().and_then(|g| g.clone())
-    } else {
-        None
-    };
-
-    // Extra line for update banner when available.
-    let has_update = vi.as_ref().map(|v| v.update_available).unwrap_or(false);
-    let extra = if has_update { 2u16 } else { 0 };
-
-    // Center vertically: logo(6)+gap(1)+version(1)+gap(1)+items(4)+gap(1)+footer(1) + optional banner
-    let content_height = 15u16 + extra;
+    let has_update = vi.map(|v| v.update_available).unwrap_or(false);
+    let update_item_count = if has_update { 1usize } else { 0 };
+    // base items + optional update item = total interactive rows
+    let total_items = BASE_ITEMS.len() + update_item_count;
+    // layout: logo(6) + gap(1) + version(1) + gap(1) + items + gap(1) + footer(1)
+    let content_height = (11 + total_items) as u16;
     let v_pad = size.height.saturating_sub(content_height) / 2;
 
     let chunks = Layout::default()
@@ -153,23 +179,19 @@ fn render(f: &mut Frame, state: &State, version: &str) {
         .constraints([
             Constraint::Length(v_pad),
             Constraint::Length(8), // logo + gap + version line
-            Constraint::Length(if has_update { 2 } else { 0 }),
-            Constraint::Min(1), // menu items + footer
+            Constraint::Min(1),    // menu items + footer
         ])
         .split(size);
 
-    // ── Logo ──────────────────────────────────────────────────────────────────
-    let version_line = if vi.is_none() && !state.version_done.load(Ordering::SeqCst) {
+    // ── Logo ─────────────────────────────────────────────────────────────────
+    let version_line = if !state.version_done.load(Ordering::SeqCst) {
         Line::from(Span::styled(
-            format!("v{}  •  verificando atualizações…", version),
+            format!("v{}  •  checking for updates…", version),
             Style::default().fg(Color::DarkGray),
         ))
     } else {
         Line::from(Span::styled(
-            format!(
-                "v{}  •  gerenciador de ambientes de desenvolvimento",
-                version
-            ),
+            format!("v{}  •  development environment manager", version),
             Style::default().fg(Color::DarkGray),
         ))
     };
@@ -188,97 +210,99 @@ fn render(f: &mut Frame, state: &State, version: &str) {
         .chain(std::iter::once(version_line))
         .collect();
 
-    let logo_widget = Paragraph::new(logo_lines).alignment(Alignment::Center);
-    f.render_widget(logo_widget, chunks[1]);
-
-    // ── Update banner ─────────────────────────────────────────────────────────
-    if has_update {
-        if let Some(ref info) = vi {
-            let banner = Paragraph::new(vec![
-                Line::from(vec![
-                    Span::styled(
-                        "  ⬆  Nova versão disponível: ",
-                        Style::default().fg(Color::Yellow),
-                    ),
-                    Span::styled(
-                        format!("v{}", info.latest),
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled("  —  execute ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(
-                        "klean update",
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(" para atualizar", Style::default().fg(Color::DarkGray)),
-                ]),
-                Line::from(""),
-            ])
-            .alignment(Alignment::Center);
-            f.render_widget(banner, chunks[2]);
-        }
-    }
+    f.render_widget(
+        Paragraph::new(logo_lines).alignment(Alignment::Center),
+        chunks[1],
+    );
 
     // ── Menu items ────────────────────────────────────────────────────────────
-    let item_lines: Vec<Line> = ITEMS
+    // Build the full item list dynamically: base items with "Quit" last, inserting
+    // "Update" before "Quit" when an update is available.
+    let mut items: Vec<(MenuChoice, String, &str)> = BASE_ITEMS[..3]
         .iter()
-        .enumerate()
-        .map(|(i, (_, label, hint))| {
-            let is_sel = i == state.cursor;
-            let num = format!("{}", i + 1);
-            if is_sel {
-                Line::from(vec![
-                    Span::styled(
-                        format!("  ▶  {}. ", num),
-                        Style::default()
-                            .fg(Color::Cyan)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        *label,
-                        Style::default()
-                            .fg(Color::White)
-                            .add_modifier(Modifier::BOLD),
-                    ),
-                    Span::styled(
-                        if hint.is_empty() {
-                            String::new()
-                        } else {
-                            format!("  — {}", hint)
-                        },
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ])
-            } else {
-                Line::from(vec![
-                    Span::styled(
-                        format!("     {}. ", num),
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                    Span::styled(*label, Style::default().fg(Color::Gray)),
-                    Span::styled(
-                        if hint.is_empty() {
-                            String::new()
-                        } else {
-                            format!("  — {}", hint)
-                        },
-                        Style::default().fg(Color::DarkGray),
-                    ),
-                ])
-            }
-        })
-        .chain(std::iter::once(Line::from("")))
-        .chain(std::iter::once(Line::from(Span::styled(
-            "  ↑↓/jk navegar   Enter selecionar   1-4 acesso rápido",
-            Style::default().fg(Color::DarkGray),
-        ))))
+        .map(|(c, l, h)| (c.clone(), l.to_string(), *h))
         .collect();
 
-    let menu_widget = Paragraph::new(item_lines)
-        .block(Block::default().borders(Borders::NONE))
-        .alignment(Alignment::Left);
-    f.render_widget(menu_widget, chunks[3]);
+    if has_update {
+        let latest = vi.map(|v| v.latest.as_str()).unwrap_or("?");
+        items.push((
+            MenuChoice::Update,
+            format!("Update  →  v{}", latest),
+            "new version available",
+        ));
+    }
+
+    items.push((MenuChoice::Quit, "Quit".to_string(), ""));
+
+    let mut lines: Vec<Line> = items
+        .iter()
+        .enumerate()
+        .map(|(i, (choice, label, hint))| {
+            let is_sel = i == state.cursor;
+            let num = i + 1;
+            let is_update = *choice == MenuChoice::Update;
+
+            let num_span = if is_sel {
+                Span::styled(
+                    format!("  ▶  {}. ", num),
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                Span::styled(
+                    format!("     {}. ", num),
+                    Style::default().fg(Color::DarkGray),
+                )
+            };
+
+            let label_style = if is_update {
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::BOLD)
+            } else if is_sel {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Gray)
+            };
+
+            let hint_span = Span::styled(
+                if hint.is_empty() {
+                    String::new()
+                } else {
+                    format!("  — {}", hint)
+                },
+                Style::default().fg(if is_update {
+                    Color::Yellow
+                } else {
+                    Color::DarkGray
+                }),
+            );
+
+            Line::from(vec![
+                num_span,
+                Span::styled(label.as_str(), label_style),
+                hint_span,
+            ])
+        })
+        .collect();
+
+    let shortcut_max = if has_update { "1-5" } else { "1-4" };
+    lines.push(Line::from(""));
+    lines.push(Line::from(Span::styled(
+        format!(
+            "  ↑↓/jk navigate   Enter select   {} quick-access",
+            shortcut_max
+        ),
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    f.render_widget(
+        Paragraph::new(lines)
+            .block(Block::default().borders(Borders::NONE))
+            .alignment(Alignment::Left),
+        chunks[2],
+    );
 }

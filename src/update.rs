@@ -67,14 +67,14 @@ fn fetch_latest_tag() -> Result<String> {
 pub fn self_update(dry_run: bool) -> Result<()> {
     let info = VersionInfo::fetch()?;
     if !info.update_available {
-        println!("✓ klean {} já é a versão mais recente.", info.current);
+        println!("✓ klean {} is already up to date.", info.current);
         return Ok(());
     }
 
-    println!("⬆  Atualizando klean {} → {}…", info.current, info.latest);
+    println!("⬆  Updating klean {} → {}…", info.current, info.latest);
 
     if dry_run {
-        println!("(dry-run) nenhuma mudança aplicada");
+        println!("(dry-run) no changes applied");
         return Ok(());
     }
 
@@ -84,11 +84,11 @@ pub fn self_update(dry_run: bool) -> Result<()> {
         let status = std::process::Command::new("cargo")
             .args(["install", "klean", "--locked", "--force"])
             .status()
-            .context("executar cargo install")?;
+            .context("run cargo install")?;
         if !status.success() {
-            bail!("cargo install klean falhou");
+            bail!("cargo install klean failed");
         }
-        println!("✓ atualizado para {}", info.latest);
+        println!("✓ updated to {}", info.latest);
         return Ok(());
     }
 
@@ -106,13 +106,13 @@ fn download_release(version: &str, dry_run: bool) -> Result<()> {
     let filename = format!("klean-v{version}-{triple}.{ext}");
     let url = format!("https://github.com/{REPO}/releases/download/v{version}/{filename}");
 
-    println!("  baixando {filename}…");
+    println!("  downloading {filename}…");
 
-    let body_bytes = http_get_bytes(&url).with_context(|| format!("download de {url}"))?;
+    let body_bytes = http_get_bytes(&url).with_context(|| format!("download {url}"))?;
 
     if dry_run {
         println!(
-            "(dry-run) arquivo baixado ({} bytes) — nenhuma mudança aplicada",
+            "(dry-run) downloaded {} bytes — no changes applied",
             body_bytes.len()
         );
         return Ok(());
@@ -156,7 +156,7 @@ fn install_archive(data: &[u8], ext: &str, dest: &PathBuf) -> Result<()> {
         }
         let _ = std::fs::remove_file(&archive_path);
         if bytes.is_empty() {
-            bail!("binário '{binary_name}' não encontrado no archive");
+            bail!("binary '{binary_name}' not found in archive");
         }
         bytes
     } else {
@@ -174,14 +174,14 @@ fn install_archive(data: &[u8], ext: &str, dest: &PathBuf) -> Result<()> {
                 ),
             ])
             .status()
-            .context("executar PowerShell Expand-Archive")?;
+            .context("run PowerShell Expand-Archive")?;
         let _ = std::fs::remove_file(&archive_path);
         if !status.success() {
-            bail!("Expand-Archive falhou");
+            bail!("Expand-Archive failed");
         }
         let bin_path = out_dir.join(binary_name);
         if !bin_path.exists() {
-            bail!("binário '{binary_name}' não encontrado após extração");
+            bail!("binary '{binary_name}' not found after extraction");
         }
         let bytes = std::fs::read(&bin_path)?;
         let _ = std::fs::remove_dir_all(&out_dir);
@@ -204,7 +204,7 @@ fn install_archive(data: &[u8], ext: &str, dest: &PathBuf) -> Result<()> {
     std::fs::rename(&tmp_bin, dest).with_context(|| {
         // Restore backup if move fails.
         let _ = std::fs::rename(&bak, dest);
-        format!("instalar novo binário em {}", dest.display())
+        format!("install new binary at {}", dest.display())
     })?;
     let _ = std::fs::remove_file(&bak);
 
@@ -222,7 +222,7 @@ fn which_cargo() -> bool {
 }
 
 fn current_exe_path() -> Result<PathBuf> {
-    std::env::current_exe().context("localizar executável atual")
+    std::env::current_exe().context("locate current executable")
 }
 
 fn tempfile_dir(beside: &Path) -> PathBuf {
@@ -266,11 +266,11 @@ fn http_get_bytes(url: &str) -> Result<Vec<u8>> {
             url,
         ])
         .output()
-        .context("executar curl")?;
+        .context("run curl")?;
 
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
-        bail!("curl falhou para {url}: {msg}");
+        bail!("curl failed for {url}: {msg}");
     }
     Ok(out.stdout)
 }

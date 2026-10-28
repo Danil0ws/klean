@@ -47,11 +47,11 @@ fn main() -> Result<()> {
             let report = run_globals(cli.dry_run)?;
             if report.removed > 0 && !cli.quiet {
                 println!(
-                    "✓ {} pacote(s) removido(s){}",
+                    "✓ {} package(s) removed{}",
                     report.removed,
                     if report.freed > 0 {
                         format!(
-                            " — {} liberados",
+                            " — {} freed",
                             humansize::format_size(report.freed, humansize::BINARY)
                         )
                     } else {
@@ -130,11 +130,11 @@ fn main() -> Result<()> {
                 let report = run_globals(cli.dry_run)?;
                 if report.removed > 0 && !cli.quiet {
                     println!(
-                        "✓ {} pacote(s) removido(s){}",
+                        "✓ {} package(s) removed{}",
                         report.removed,
                         if report.freed > 0 {
                             format!(
-                                " — {} liberados",
+                                " — {} freed",
                                 humansize::format_size(report.freed, humansize::BINARY)
                             )
                         } else {
@@ -142,6 +142,10 @@ fn main() -> Result<()> {
                         }
                     );
                 }
+                return Ok(());
+            }
+            MenuChoice::Update => {
+                update::self_update(cli.dry_run)?;
                 return Ok(());
             }
             MenuChoice::Clean => {
@@ -156,7 +160,7 @@ fn main() -> Result<()> {
 
                 if !cli.quiet && report.cleaned > 0 {
                     println!(
-                        "✓ {} liberados em {} item(ns) — `klean undo` desfaz o que foi para a lixeira",
+                        "✓ {} freed across {} item(s) — `klean undo` restores from trash",
                         humansize::format_size(report.freed, humansize::BINARY),
                         report.cleaned
                     );
@@ -411,14 +415,14 @@ fn finish(over_limit: bool) -> Result<()> {
 /// `klean undo`: move the newest trash session back where it came from.
 fn undo_last() -> Result<()> {
     match trash::undo_last()? {
-        None => println!("nada para desfazer — a lixeira do klean está vazia"),
+        None => println!("nothing to undo — klean trash is empty"),
         Some(report) => {
             for (path, _) in &report.restored {
                 println!("↩ {}", path.display());
             }
             if !report.restored.is_empty() {
                 println!(
-                    "✓ {} item(ns) de volta — {}",
+                    "✓ {} item(s) restored — {}",
                     report.restored.len(),
                     humansize::format_size(report.bytes, humansize::BINARY)
                 );
@@ -436,7 +440,7 @@ fn trash_report(empty: bool) -> Result<()> {
     if empty {
         let (sessions, bytes) = trash::empty()?;
         println!(
-            "🧹 lixeira esvaziada: {} sessão(ões), {} liberados",
+            "🧹 trash emptied: {} session(s), {} freed",
             sessions,
             humansize::format_size(bytes, humansize::BINARY)
         );
@@ -445,26 +449,26 @@ fn trash_report(empty: bool) -> Result<()> {
 
     let sessions = trash::list()?;
     if sessions.is_empty() {
-        println!("lixeira vazia — nada para desfazer");
+        println!("trash is empty — nothing to undo");
         return Ok(());
     }
 
     let bytes: u64 = sessions.iter().map(|session| session.bytes).sum();
     println!(
-        "🗑  lixeira do klean: {} sessão(ões), {} — `klean undo` traz a última de volta",
+        "🗑  klean trash: {} session(s), {} — `klean undo` restores the latest",
         sessions.len(),
         humansize::format_size(bytes, humansize::BINARY)
     );
     for session in &sessions {
         println!(
-            "  {} — {} item(ns), {}",
+            "  {} — {} item(s), {}",
             trash::human_age(session.age_secs),
             session.items,
             humansize::format_size(session.bytes, humansize::BINARY)
         );
     }
     println!(
-        "  (sessões com mais de {} dias saem sozinhas; `klean trash --empty` libera agora)",
+        "  (sessions older than {} days expire automatically; `klean trash --empty` clears now)",
         trash::KEEP_DAYS
     );
     Ok(())

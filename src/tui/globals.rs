@@ -312,7 +312,7 @@ fn render(f: &mut Frame, state: &mut State) {
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
         ),
-        Span::raw("globals — pacotes instalados globalmente"),
+        Span::raw("globals — globally installed packages"),
     ]);
     let header = Paragraph::new(title_line).block(Block::default().borders(Borders::ALL));
     f.render_widget(header, chunks[0]);
@@ -329,7 +329,7 @@ fn render(f: &mut Frame, state: &mut State) {
     }
 
     let update_status = if state.update_scanning {
-        " ⟳ verificando atualizações… "
+        " ⟳ checking updates… "
     } else {
         let count = state
             .packages
@@ -337,27 +337,27 @@ fn render(f: &mut Frame, state: &mut State) {
             .filter(|p| p.update_available.is_some())
             .count();
         if count > 0 {
-            "⬆ updates disponíveis "
+            "⬆ updates available "
         } else {
             ""
         }
     };
 
     let sort_label = if state.sort_by_size {
-        "↕tamanho"
+        "↕size"
     } else {
-        "↕gerenc."
+        "↕mgr"
     };
 
     let footer_text = match state.ui {
-        UiState::Scanning => " Escaneando… ".to_string(),
+        UiState::Scanning => " Scanning… ".to_string(),
         UiState::Listing => format!(
-            " ↑↓/jk  Espaço  a tudo  {} s  u updates  Enter confirmar  q sair {}",
+            " ↑↓/jk  Space select  a all  {} s  u updates  Enter remove  q quit {}",
             sort_label, update_status
         ),
-        UiState::Confirming => " y/Enter confirmar remoção  n/Esc cancelar ".to_string(),
-        UiState::Removing => " Removendo… ".to_string(),
-        UiState::Done => " Qualquer tecla para sair ".to_string(),
+        UiState::Confirming => " y/Enter confirm removal  n/Esc cancel ".to_string(),
+        UiState::Removing => " Removing… ".to_string(),
+        UiState::Done => " Press any key to exit ".to_string(),
     };
     let footer_style = if state.update_scanning {
         Style::default().fg(Color::Yellow)
@@ -371,15 +371,14 @@ fn render(f: &mut Frame, state: &mut State) {
 }
 
 fn render_scanning(f: &mut Frame, area: Rect) {
-    let p =
-        Paragraph::new("\n\n  🔍 Escaneando pacotes globais (npm, cargo, pip, brew, binários)…")
-            .block(Block::default().borders(Borders::ALL));
+    let p = Paragraph::new("\n\n  🔍 Scanning global packages (npm, cargo, pip, brew, binaries)…")
+        .block(Block::default().borders(Borders::ALL));
     f.render_widget(p, area);
 }
 
 fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
     if state.packages.is_empty() {
-        let p = Paragraph::new("\n\n  ✨ Nenhum pacote global encontrado.")
+        let p = Paragraph::new("\n\n  ✨ No global packages found.")
             .block(Block::default().borders(Borders::ALL));
         f.render_widget(p, area);
         return;
@@ -387,10 +386,10 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
 
     let header = Row::new(vec![
         Cell::from(""),
-        Cell::from("Gerenciador").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Pacote").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Versão").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Tamanho").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("Manager").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("Package").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("Version").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("Size").style(Style::default().add_modifier(Modifier::BOLD)),
     ])
     .style(Style::default().fg(Color::Yellow))
     .height(1);
@@ -443,12 +442,12 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
         .iter()
         .filter(|p| p.update_available.is_some())
         .count();
-    let mut title_parts = vec![format!(" {} pacotes", state.packages.len())];
+    let mut title_parts = vec![format!(" {} packages", state.packages.len())];
     if sel > 0 {
-        title_parts.push(format!("  ({} selecionado(s))", sel));
+        title_parts.push(format!("  ({} selected)", sel));
     }
     if updates_count > 0 {
-        title_parts.push(format!("  ⬆ {} com update", updates_count));
+        title_parts.push(format!("  ⬆ {} with update", updates_count));
     }
     let title = title_parts.join("");
 
@@ -480,7 +479,7 @@ fn render_confirm_dialog(f: &mut Frame, state: &State, area: Rect) {
     let freed_str = if freed > 0 {
         format_size(freed, humansize::BINARY)
     } else {
-        "tamanho desconhecido".to_string()
+        "unknown size".to_string()
     };
 
     let dialog_w = 52u16.min(area.width.saturating_sub(4));
@@ -492,14 +491,14 @@ fn render_confirm_dialog(f: &mut Frame, state: &State, area: Rect) {
     f.render_widget(Clear, dialog_area);
 
     let text = format!(
-        "\n  Remover {} pacote(s)?\n  Espaço liberado: {}\n\n  [y/Enter] Confirmar    [n/Esc] Cancelar",
+        "\n  Remove {} package(s)?\n  Space freed: {}\n\n  [y/Enter] Confirm    [n/Esc] Cancel",
         count, freed_str
     );
     let dialog = Paragraph::new(text)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Confirmar remoção ")
+                .title(" Confirm removal ")
                 .border_style(Style::default().fg(Color::Red)),
         )
         .style(Style::default().fg(Color::White));
@@ -520,7 +519,7 @@ fn render_removing(f: &mut Frame, state: &State, area: Rect) {
         .split(area);
 
     let gauge = Gauge::default()
-        .block(Block::default().borders(Borders::ALL).title(" Removendo "))
+        .block(Block::default().borders(Borders::ALL).title(" Removing "))
         .gauge_style(Style::default().fg(Color::Red))
         .percent(percent)
         .label(format!("{}/{}", done, total));
@@ -546,11 +545,11 @@ fn render_done(f: &mut Frame, state: &State, area: Rect) {
         "—".to_string()
     };
     let text = format!(
-        "\n\n  ✓ {} pacote(s) removido(s)  •  {} liberados\n\n  Pressione qualquer tecla para sair.",
+        "\n\n  ✓ {} package(s) removed  •  {} freed\n\n  Press any key to exit.",
         state.report.removed, freed
     );
     let p = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL).title(" Concluído "))
+        .block(Block::default().borders(Borders::ALL).title(" Done "))
         .style(Style::default().fg(Color::Green));
     f.render_widget(p, area);
 }
