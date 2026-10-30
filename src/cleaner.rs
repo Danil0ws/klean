@@ -444,7 +444,7 @@ impl CleanResult {
 
         if self.trashed > 0 {
             println!(
-                "🗑  {} item(ns) na lixeira — `klean undo` traz de volta, `klean trash --empty` libera de vez",
+                "🗑  {} item(s) moved to trash — `klean undo` restores them, `klean trash --empty` frees space permanently",
                 self.trashed
             );
         }

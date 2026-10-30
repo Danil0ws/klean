@@ -154,7 +154,7 @@ jobs:
           SHA256=$(sha256sum /tmp/klean.zip | awk '{print $1}')
 
           cat > klean.installer.yaml <<EOF
-          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.1.7.0.schema.json
           PackageIdentifier: klean.klean
           PackageVersion: ${VERSION}
           InstallerLocale: en-US
@@ -168,11 +168,11 @@ jobs:
             InstallerUrl: https://github.com/danil0ws/klean/releases/download/v${VERSION}/klean-v${VERSION}-x86_64-pc-windows-msvc.zip
             InstallerSha256: ${SHA256}
           ManifestType: installer
-          ManifestVersion: 1.6.0
+          ManifestVersion: 1.7.0
           EOF
 
           cat > klean.locale.en-US.yaml <<EOF
-          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.1.7.0.schema.json
           PackageIdentifier: klean.klean
           PackageVersion: ${VERSION}
           PackageLocale: en-US
@@ -193,16 +193,16 @@ jobs:
           - cache
           - cleanup
           ManifestType: defaultLocale
-          ManifestVersion: 1.6.0
+          ManifestVersion: 1.7.0
           EOF
 
           cat > klean.yaml <<EOF
-          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+          # yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.1.7.0.schema.json
           PackageIdentifier: klean.klean
           PackageVersion: ${VERSION}
           DefaultLocale: en-US
           ManifestType: version
-          ManifestVersion: 1.6.0
+          ManifestVersion: 1.7.0
           EOF
 
           rm -f /tmp/klean.zip

@@ -263,7 +263,7 @@ fn respond(stream: &mut TcpStream, status: u16, content_type: &str, body: &str) 
 }
 
 const PAGE: &str = r#"<!doctype html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -292,17 +292,17 @@ tr:hover td { background:#151a24; }
 <body>
 <header><h1>klean</h1><span id="root"></span><span id="total"></span></header>
 <div class="bar">
-  <button id="refresh">↻ Atualizar</button>
-  <label><input type="checkbox" id="all"> tudo</label>
-  <button id="clean" class="primary">🧹 Limpar selecionados</button>
-  <button id="stats">📈 Histórico</button>
+  <button id="refresh">↻ Refresh</button>
+  <label><input type="checkbox" id="all"> all</label>
+  <button id="clean" class="primary">🧹 Clean selected</button>
+  <button id="stats">📈 History</button>
 </div>
 <div id="msg"></div>
 <table>
-  <thead><tr><th></th><th>Artefato</th><th>Tamanho</th><th>Projeto</th><th>Caminho</th></tr></thead>
+  <thead><tr><th></th><th>Artifact</th><th>Size</th><th>Project</th><th>Path</th></tr></thead>
   <tbody id="rows"></tbody>
 </table>
-<div id="empty" class="empty" hidden>Nenhum artefato encontrado.</div>
+<div id="empty" class="empty" hidden>No artifacts found.</div>
 <pre id="statsout" class="empty" hidden></pre>
 <script>
 var token = new URLSearchParams(location.search).get('token') || '';
@@ -320,7 +320,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return ({'&
 function load() {
   return api('/api/scan').then(function (data) {
     document.getElementById('root').textContent = data.root;
-    document.getElementById('total').textContent = data.total_human + ' — ' + data.artifact_count + ' item(ns), ' + data.project_count + ' projeto(s)';
+    document.getElementById('total').textContent = data.total_human + ' — ' + data.artifact_count + ' item(s), ' + data.project_count + ' project(s)';
     var rows = document.getElementById('rows');
     rows.innerHTML = '';
     data.projects.forEach(function (p) {
@@ -336,22 +336,22 @@ function load() {
     });
     document.getElementById('empty').hidden = data.artifact_count > 0;
     document.getElementById('msg').textContent = data.blocked.length
-      ? data.blocked.length + ' item(ns) protegido(s) por regra de projeto'
+      ? data.blocked.length + ' item(s) protected by project rule'
       : '';
   }).catch(show);
 }
-function show(err) { document.getElementById('msg').textContent = 'erro: ' + err.message; }
+function show(err) { document.getElementById('msg').textContent = 'error: ' + err.message; }
 function clean() {
   var paths = Array.prototype.map.call(document.querySelectorAll('input[data-path]:checked'), function (c) { return c.dataset.path; });
   if (!paths.length) { return; }
-  if (!confirm('Apagar ' + paths.length + ' pasta(s)? Isso não tem volta.')) { return; }
+  if (!confirm('Delete ' + paths.length + ' folder(s)? This cannot be undone.')) { return; }
   api('/api/clean', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths: paths })
   }).then(function (res) {
-    document.getElementById('msg').textContent = 'Removidos ' + res.deleted + ' — liberado ' + res.freed_human
-      + (res.failed ? ' — ' + res.failed + ' falha(s)' : '');
+    document.getElementById('msg').textContent = 'Removed ' + res.deleted + ' — freed ' + res.freed_human
+      + (res.failed ? ' — ' + res.failed + ' failure(s)' : '');
     return load();
   }).catch(show);
 }

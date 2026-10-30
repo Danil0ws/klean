@@ -348,7 +348,7 @@ impl TuiState {
         if !self.artifacts.is_empty() {
             self.show_toast(
                 format!(
-                    "✓ todos os {} marcados · {}",
+                    "✓ all {} selected · {}",
                     self.artifacts.len(),
                     bytes(self.total_selected_size)
                 ),
@@ -362,7 +362,7 @@ impl TuiState {
         self.selected_artifacts.iter_mut().for_each(|s| *s = false);
         self.total_selected_size = 0;
         if had > 0 {
-            self.show_toast(format!("○ {had} desmarcado(s)"), Color::Yellow);
+            self.show_toast(format!("○ {had} deselected"), Color::Yellow);
         }
     }
 
@@ -371,7 +371,7 @@ impl TuiState {
         self.update_total_size();
         self.show_toast(
             format!(
-                "⇄ seleção invertida · {} marcados · {}",
+                "⇄ selection inverted · {} selected · {}",
                 self.selected_count(),
                 bytes(self.total_selected_size)
             ),
@@ -390,9 +390,9 @@ impl TuiState {
             let text = format!(
                 "{} {} · {} — {}",
                 if marked {
-                    "✓ marcado"
+                    "✓ selected"
                 } else {
-                    "○ desmarcado"
+                    "○ deselected"
                 },
                 artifact.name,
                 artifact.size_string(),
@@ -621,7 +621,7 @@ impl TuiState {
         self.session_cleaned = self.session_cleaned.saturating_sub(restored.len());
         self.last_result = None;
         self.show_toast(
-            format!("↩ {} item(ns) de volta · {}", restored.len(), bytes(freed)),
+            format!("↩ {} item(s) restored · {}", restored.len(), bytes(freed)),
             Color::Cyan,
         );
         self.input_mode = InputMode::Normal;
@@ -843,7 +843,7 @@ impl Tui {
             let inner = Block::default().borders(Borders::ALL).inner(chunks[0]);
             f.render_widget(Clear, inner);
             f.render_widget(
-                Paragraph::new("✨ nada mais para limpar — Q para sair")
+                Paragraph::new("✨ nothing left to clean — Q to quit")
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(Color::Green)),
                 inner,
@@ -852,12 +852,12 @@ impl Tui {
 
         let mut status_text = vec![Line::from(
             [
-                ("↑↓", "mover"),
-                ("Espaço", "marcar"),
-                ("A", "todos"),
-                ("I", "inverter"),
-                ("D", "nenhum"),
-                ("Enter", "limpar"),
+                ("↑↓", "move"),
+                ("Space", "mark"),
+                ("A", "all"),
+                ("I", "invert"),
+                ("D", "none"),
+                ("Enter", "clean"),
                 ("Q", "sair"),
             ]
             .into_iter()
@@ -868,7 +868,7 @@ impl Tui {
         let count = state.selected_count();
         status_text.push(if count == 0 {
             Line::from(Span::styled(
-                "○ nada marcado — Espaço marca a linha, A marca tudo, clique também marca",
+                "○ nothing selected — Space marks the row, A marks all, click also selects",
                 Style::default().fg(Color::DarkGray),
             ))
         } else {
@@ -880,7 +880,7 @@ impl Tui {
             Line::from(vec![
                 Span::styled(
                     format!(
-                        "● {count} marcado(s) em {} projeto(s) · {} ",
+                        "● {count} selected in {} project(s) · {} ",
                         state.selected_project_count(),
                         bytes(state.total_selected_size)
                     ),
@@ -907,7 +907,7 @@ impl Tui {
         if state.session_cleaned > 0 {
             status_text.push(Line::from(Span::styled(
                 format!(
-                    "✓ {} liberados nesta sessão ({} itens)",
+                    "✓ {} freed this session ({} items)",
                     bytes(state.session_freed),
                     state.session_cleaned
                 ),
@@ -918,7 +918,7 @@ impl Tui {
         if unsafe_selected > 0 {
             status_text.push(Line::from(Span::styled(
                 format!(
-                    "⚠ {unsafe_selected} marcado(s) podem ser código, não build (bin, out, Library...) — confira"
+                    "⚠ {unsafe_selected} selected may be source code, not build output (bin, out, Library…) — double check"
                 ),
                 Style::default().fg(Color::Yellow),
             )));
@@ -955,19 +955,19 @@ impl Tui {
 
         let (headline, accent) = match choice {
             ConfirmChoice::Clean if backup => (
-                format!("Mover {count} item(ns) de {projects} projeto(s) para o backup?"),
+                format!("Move {count} item(s) from {projects} project(s) to backup?"),
                 Color::Yellow,
             ),
             ConfirmChoice::Clean => (
-                format!("Apagar para sempre {count} item(ns) de {projects} projeto(s)?"),
+                format!("Permanently delete {count} item(s) from {projects} project(s)?"),
                 Color::Red,
             ),
             ConfirmChoice::Trash => (
-                format!("Mover {count} item(ns) para a lixeira? (U desfaz)"),
+                format!("Move {count} item(s) to trash? (U to undo)"),
                 Color::Cyan,
             ),
             ConfirmChoice::Cancel => (
-                "Voltar para a lista sem tocar em nada".to_string(),
+                "Go back to the list without touching anything".to_string(),
                 Color::Gray,
             ),
         };
@@ -1004,7 +1004,7 @@ impl Tui {
         if selected.len() > room {
             let rest: u64 = selected.iter().skip(room).map(|a| a.size).sum();
             lines.push(Line::from(Span::styled(
-                format!("  … e mais {} · {}", selected.len() - room, bytes(rest)),
+                format!("  … and {} more · {}", selected.len() - room, bytes(rest)),
                 Style::default().fg(Color::DarkGray),
             )));
         }
@@ -1013,7 +1013,9 @@ impl Tui {
             lines.push(Line::from(""));
             lines.push(
                 Line::from(Span::styled(
-                    format!("⚠ {unsafe_selected} pode(m) ser código, não build — confira antes"),
+                    format!(
+                        "⚠ {unsafe_selected} may be source code, not build output — double check"
+                    ),
                     Style::default().fg(Color::Yellow),
                 ))
                 .alignment(Alignment::Center),
@@ -1026,9 +1028,9 @@ impl Tui {
             .flat_map(|button| {
                 let (key, label, color) = match button {
                     ConfirmChoice::Clean if backup => ("Y", "Backup", Color::Yellow),
-                    ConfirmChoice::Clean => ("Y", "Apagar", Color::Red),
-                    ConfirmChoice::Trash => ("T", "Lixeira", Color::Cyan),
-                    ConfirmChoice::Cancel => ("N", "Cancelar", Color::Gray),
+                    ConfirmChoice::Clean => ("Y", "Delete", Color::Red),
+                    ConfirmChoice::Trash => ("T", "Trash", Color::Cyan),
+                    ConfirmChoice::Cancel => ("N", "Cancel", Color::Gray),
                 };
                 let span = if *button == choice {
                     Span::styled(
@@ -1047,7 +1049,7 @@ impl Tui {
         lines.push(Line::from(buttons).alignment(Alignment::Center));
         lines.push(
             Line::from(Span::styled(
-                "←→ escolhe · Enter confirma · Esc cancela",
+                "←→ choose · Enter confirm · Esc cancel",
                 Style::default().fg(Color::DarkGray),
             ))
             .alignment(Alignment::Center),
@@ -1061,7 +1063,7 @@ impl Tui {
         let dialog = Paragraph::new(lines).block(
             Block::default()
                 .title(Span::styled(
-                    " Confirmar limpeza ",
+                    " Confirm cleanup ",
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 ))
                 .borders(Borders::ALL)
@@ -1084,9 +1086,9 @@ impl Tui {
         let elapsed = feed.elapsed();
 
         let (title, accent) = match feed.action {
-            CleanerAction::Delete => ("Apagando", Color::Red),
-            CleanerAction::Trash => ("Movendo para a lixeira", Color::Cyan),
-            CleanerAction::Backup => ("Movendo para o backup", Color::Yellow),
+            CleanerAction::Delete => ("Deleting", Color::Red),
+            CleanerAction::Trash => ("Moving to trash", Color::Cyan),
+            CleanerAction::Backup => ("Moving to backup", Color::Yellow),
         };
         let block = Block::default()
             .title(Span::styled(
@@ -1124,7 +1126,7 @@ impl Tui {
             header.push(Span::raw("  "));
         }
         header.push(Span::raw(format!(
-            "{} item(ns) · {}",
+            "{} item(s) · {}",
             feed.items.len(),
             bytes(feed.total_bytes)
         )));
@@ -1152,7 +1154,7 @@ impl Tui {
         f.render_widget(
             Paragraph::new(Line::from(Span::styled(
                 format!(
-                    "{} de {} itens · {} de {} · {}{rate}",
+                    "{} of {} items · {} of {} · {}{rate}",
                     feed.finished.len(),
                     feed.items.len(),
                     bytes(feed.freed),
@@ -1193,7 +1195,7 @@ impl Tui {
             }
         } else if !feed.done {
             current.push(Line::from(Span::styled(
-                format!("{} preparando…", spinner(elapsed)),
+                format!("{} preparing…", spinner(elapsed)),
                 Style::default().fg(Color::DarkGray),
             )));
         }
@@ -1219,12 +1221,12 @@ impl Tui {
 
         let hint = if feed.cancel_requested() {
             Span::styled(
-                "⏸ interrompendo depois do item atual…",
+                "⏸ stopping after current item…",
                 Style::default().fg(Color::Yellow),
             )
         } else {
             Span::styled(
-                "Esc interrompe depois do item atual (nenhum item fica pela metade)",
+                "Esc stops after the current item (no item left half-done)",
                 Style::default().fg(Color::DarkGray),
             )
         };
@@ -1243,34 +1245,34 @@ impl Tui {
         let removed = result.removed();
 
         let (icon, headline, accent) = if result.cancelled {
-            ("⏸", "Limpeza interrompida".to_string(), Color::Yellow)
+            ("⏸", "Cleanup interrupted".to_string(), Color::Yellow)
         } else if removed == 0 && result.failed > 0 {
-            ("✗", "Nada foi removido".to_string(), Color::Red)
+            ("✗", "Nothing removed".to_string(), Color::Red)
         } else if result.failed > 0 {
             (
                 "✓",
-                format!("Concluída com {} falha(s)", result.failed),
+                format!("Completed with {} failure(s)", result.failed),
                 Color::Yellow,
             )
         } else {
-            ("✓", "Limpeza concluída".to_string(), Color::Green)
+            ("✓", "Cleanup complete".to_string(), Color::Green)
         };
 
         let verb = match result.action {
-            CleanerAction::Delete => "liberados",
-            CleanerAction::Trash => "na lixeira (U desfaz)",
-            CleanerAction::Backup => "movidos para o backup",
+            CleanerAction::Delete => "freed",
+            CleanerAction::Trash => "moved to trash (U to undo)",
+            CleanerAction::Backup => "moved to backup",
         };
 
         let mut scope = format!(
-            "em {} · {} item(ns) · {} projeto(s)",
+            "in {} · {} item(s) · {} project(s)",
             human_duration(result.elapsed),
             removed,
             result.projects
         );
         if result.cancelled {
             scope.push_str(&format!(
-                " · {} de {} feitos",
+                " · {} of {} done",
                 removed + result.failed,
                 result.planned
             ));
@@ -1332,7 +1334,7 @@ impl Tui {
             if result.breakdown.len() > 6 {
                 lines.push(
                     Line::from(Span::styled(
-                        format!("… e mais {} tipo(s)", result.breakdown.len() - 6),
+                        format!("… and {} more type(s)", result.breakdown.len() - 6),
                         Style::default().fg(Color::DarkGray),
                     ))
                     .alignment(Alignment::Center),
@@ -1344,7 +1346,7 @@ impl Tui {
         if let Some((path, size)) = &result.largest {
             lines.push(
                 Line::from(vec![
-                    Span::styled("maior: ", Style::default().fg(Color::DarkGray)),
+                    Span::styled("largest: ", Style::default().fg(Color::DarkGray)),
                     Span::raw(truncate_middle(path, inner_width.saturating_sub(22))),
                     Span::styled(
                         format!(" · {}", bytes(*size)),
@@ -1359,7 +1361,7 @@ impl Tui {
             lines.push(
                 Line::from(Span::styled(
                     format!(
-                        "✗ {} falha(s) — continuam na lista para tentar de novo",
+                        "✗ {} failure(s) — still in the list to retry",
                         result.failed
                     ),
                     Style::default().fg(Color::Red),
@@ -1379,21 +1381,21 @@ impl Tui {
 
         lines.push(
             Line::from(Span::styled(
-                format!("total da sessão: {}", bytes(state.session_freed)),
+                format!("session total: {}", bytes(state.session_freed)),
                 Style::default().fg(Color::Gray),
             ))
             .alignment(Alignment::Center),
         );
 
         lines.push(Line::from(""));
-        let mut keys = key_hint("Enter", "volta para a lista");
+        let mut keys = key_hint("Enter", "back to list");
         if result.trashed > 0 {
             keys.extend(key_hint(
                 "U",
-                &format!("desfaz ({} voltam)", result.trashed),
+                &format!("undo ({} restored)", result.trashed),
             ));
         }
-        keys.extend(key_hint("Q", "sai"));
+        keys.extend(key_hint("Q", "quit"));
         lines.push(Line::from(keys).alignment(Alignment::Center));
 
         fit_lines(&mut lines, area.height, 1);
@@ -1404,7 +1406,7 @@ impl Tui {
         let dialog = Paragraph::new(lines).block(
             Block::default()
                 .title(Span::styled(
-                    " Resumo ",
+                    " Summary ",
                     Style::default().fg(accent).add_modifier(Modifier::BOLD),
                 ))
                 .borders(Borders::ALL)
@@ -1643,13 +1645,13 @@ mod tests {
         assert!(s.selected_artifacts[1]);
         assert_eq!(s.flash.map(|(row, _)| row), Some(1));
         let (text, color, _) = s.toast.clone().expect("a toast confirms the toggle");
-        assert!(text.starts_with("✓ marcado node_modules"));
+        assert!(text.starts_with("✓ selected node_modules"));
         assert_eq!(color, Color::Green);
         assert!(s.animating());
 
         s.toggle_selected();
         assert!(!s.selected_artifacts[1]);
-        assert!(s.toast.unwrap().0.starts_with("○ desmarcado"));
+        assert!(s.toast.unwrap().0.starts_with("○ deselected"));
     }
 
     #[test]
@@ -1769,7 +1771,7 @@ mod tests {
         assert_eq!(s.artifacts[0].path, kept);
         assert!(
             !s.selected_artifacts[0],
-            "a lista não fica toda marcada depois de limpar"
+            "list should not remain fully selected after cleaning"
         );
         assert_eq!(s.selected, 0);
         assert_eq!(s.total_selected_size, 0);
@@ -1844,9 +1846,12 @@ mod tests {
         assert_eq!(s.artifacts[0].path, restored);
         assert_eq!(s.artifacts[0].name, "node_modules");
         assert_eq!(s.artifacts[0].size, 4096);
-        assert_eq!(s.session_freed, 0, "o total da sessão é devolvido");
+        assert_eq!(
+            s.session_freed, 0,
+            "session total should be zeroed after undo"
+        );
         assert_eq!(s.session_cleaned, 0);
-        assert!(!s.selected_artifacts[0], "volta desmarcado");
+        assert!(!s.selected_artifacts[0], "should be deselected after undo");
         assert_eq!(s.input_mode, InputMode::Normal);
         assert!(s.toast.is_some());
 

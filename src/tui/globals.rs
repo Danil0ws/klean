@@ -11,7 +11,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, Borders, Cell, Clear, Gauge, Paragraph, Row, Table, TableState},
     Frame, Terminal,
 };
@@ -298,34 +298,18 @@ fn render(f: &mut Frame, state: &mut State) {
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(3),
-            Constraint::Min(0),
-            Constraint::Length(3),
-        ])
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
         .split(size);
 
-    let title_line = Line::from(vec![
-        Span::styled(
-            " klean ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw("globals — globally installed packages"),
-    ]);
-    let header = Paragraph::new(title_line).block(Block::default().borders(Borders::ALL));
-    f.render_widget(header, chunks[0]);
-
     match &state.ui {
-        UiState::Scanning => render_scanning(f, chunks[1]),
-        UiState::Listing => render_list(f, state, chunks[1]),
+        UiState::Scanning => render_scanning(f, chunks[0]),
+        UiState::Listing => render_list(f, state, chunks[0]),
         UiState::Confirming => {
-            render_list(f, state, chunks[1]);
+            render_list(f, state, chunks[0]);
             render_confirm_dialog(f, state, size);
         }
-        UiState::Removing => render_removing(f, state, chunks[1]),
-        UiState::Done => render_done(f, state, chunks[1]),
+        UiState::Removing => render_removing(f, state, chunks[0]),
+        UiState::Done => render_done(f, state, chunks[0]),
     }
 
     let update_status = if state.update_scanning {
@@ -367,7 +351,7 @@ fn render(f: &mut Frame, state: &mut State) {
     let footer = Paragraph::new(footer_text)
         .style(footer_style)
         .block(Block::default().borders(Borders::ALL));
-    f.render_widget(footer, chunks[2]);
+    f.render_widget(footer, chunks[1]);
 }
 
 fn render_scanning(f: &mut Frame, area: Rect) {
@@ -442,7 +426,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
         .iter()
         .filter(|p| p.update_available.is_some())
         .count();
-    let mut title_parts = vec![format!(" {} packages", state.packages.len())];
+    let mut title_parts = vec![format!(" globals — {} packages", state.packages.len())];
     if sel > 0 {
         title_parts.push(format!("  ({} selected)", sel));
     }
