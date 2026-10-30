@@ -60,12 +60,6 @@ brew tap danil0ws/klean
 brew install klean
 ```
 
-**Linux (Ubuntu/Debian)**
-```bash
-curl -s https://packagecloud.io/install/repositories/danil0ws/klean/script.deb.sh | sudo bash
-sudo apt-get install klean
-```
-
 **Arch Linux**
 ```bash
 yay -S klean
@@ -77,26 +71,6 @@ git clone https://aur.archlinux.org/klean.git && cd klean && makepkg -si
 ```powershell
 scoop bucket add klean https://github.com/danil0ws/scoop-bucket
 scoop install klean
-```
-
-**Windows (Chocolatey)**
-```powershell
-choco install klean
-```
-
-**Windows (winget)**
-```powershell
-winget install klean.klean
-```
-
-**Cross-platform (mise/asdf)**
-```bash
-mise plugin add klean https://github.com/danil0ws/mise-klean
-mise install klean@latest
-
-# asdf works with the same plugin
-asdf plugin add klean https://github.com/danil0ws/mise-klean
-asdf install klean latest
 ```
 
 **From Source**
@@ -111,9 +85,7 @@ cargo install --path .
 cargo install --git https://github.com/danil0ws/klean --locked
 ```
 
-**From crates.io** — only after the first publish. The crate is not on the
-registry yet, so today `cargo install klean` fails with
-`could not find 'klean' in registry 'crates-io'`:
+**From crates.io**
 ```bash
 cargo install klean
 ```

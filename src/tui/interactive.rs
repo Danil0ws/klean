@@ -169,7 +169,7 @@ impl InteractiveMode {
                                 KeyCode::Enter => {
                                     if state.selected_count() == 0 {
                                         state.show_toast(
-                                            "nada marcado — Espaço marca a linha, A marca tudo",
+                                            "nothing selected — Space marks the row, A marks all",
                                             Color::Yellow,
                                         );
                                     } else {
@@ -206,7 +206,7 @@ impl InteractiveMode {
                                 match chosen {
                                     Some(ConfirmChoice::Cancel) => {
                                         state.input_mode = InputMode::Normal;
-                                        state.show_toast("limpeza cancelada", Color::Gray);
+                                        state.show_toast("cleanup cancelled", Color::Gray);
                                     }
                                     Some(ConfirmChoice::Clean) => {
                                         let action = if ctx.backup_dir.is_some() {
@@ -247,7 +247,7 @@ impl InteractiveMode {
                                         Ok(_) => {
                                             state.last_result = None;
                                             state.notice =
-                                                Some("nada na lixeira para desfazer".to_string());
+                                                Some("nothing in trash to undo".to_string());
                                             state.input_mode = InputMode::Normal;
                                         }
                                         Err(error) => {

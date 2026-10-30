@@ -7,14 +7,14 @@ the release `SHA256SUMS` and installs to `~/.local/bin`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.sh | sh
-# options: --version v1.6.0  --prefix /usr/local/bin  --dry-run
+# options: --version v1.7.0  --prefix /usr/local/bin  --dry-run
 ```
 
 Windows (PowerShell):
 
 ```powershell
 irm https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.ps1 | iex
-# options: -Version v1.6.0  -Prefix C:\Tools\klean  -DryRun
+# options: -Version v1.7.0  -Prefix C:\Tools\klean  -DryRun
 ```
 
 ## Package Manager Installation Methods

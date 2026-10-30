@@ -143,7 +143,7 @@ pub fn print_stats(path: &Path, json: bool) -> Result<()> {
 
     if runs.is_empty() {
         println!("📈 Sem histórico ainda ({})", path.display());
-        println!("   Cada limpeza real grava uma linha aqui.");
+        println!("   Each real cleanup records a line here.");
         return Ok(());
     }
 
