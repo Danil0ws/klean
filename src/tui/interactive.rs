@@ -26,6 +26,8 @@ use crate::trash;
 pub struct SessionReport {
     pub freed: u64,
     pub cleaned: usize,
+    /// True when the user pressed Esc to return to the menu instead of quitting.
+    pub back_to_menu: bool,
 }
 
 pub struct InteractiveMode;
@@ -56,10 +58,17 @@ impl InteractiveMode {
         // The scan runs off-thread so the loading screen can breathe: it names
         // the directory being read and counts folders while it works.
         let feed = Arc::new(Mutex::new(ScanFeed::new()));
+        let scan_cancel = {
+            let f = feed.lock().unwrap_or_else(|e| e.into_inner());
+            Arc::clone(&f.cancel)
+        };
         let worker = Arc::clone(&feed);
+        let cancel_for_scanner = Arc::clone(&scan_cancel);
         let handle = std::thread::spawn(move || {
             let progress = Arc::clone(&worker);
-            let scanner = scanner.with_progress(Box::new(move |path: &Path| {
+            let scanner = scanner
+                .with_cancel(cancel_for_scanner)
+                .with_progress(Box::new(move |path: &Path| {
                 if let Ok(mut feed) = progress.lock() {
                     feed.current = Some(path.to_path_buf());
                     feed.dirs += 1;
@@ -87,13 +96,20 @@ impl InteractiveMode {
 
         let mut state = TuiState::new(Vec::new(), ctx.root.clone());
         let mut scanning = true;
+        let mut scan_cancelled = false;
         let mut cleaning: Option<CleanJob> = None;
+        let mut back_to_menu = false;
 
         loop {
             // Fold the worker's result in as soon as it lands.
             if scanning {
                 let mut feed = feed.lock().unwrap_or_else(|error| error.into_inner());
                 if feed.done {
+                    if scan_cancelled {
+                        // Aborted by the user: go back to menu (or quit).
+                        drop(feed);
+                        break;
+                    }
                     match feed.outcome.take() {
                         Some(Ok(artifacts)) => state = TuiState::new(artifacts, ctx.root.clone()),
                         Some(Err(error)) => state.notice = Some(format!("✗ {error}")),
@@ -145,9 +161,30 @@ impl InteractiveMode {
                         if key.kind == event::KeyEventKind::Release {
                             continue;
                         }
+                        // Cancel or quit during the loading/scanning screen.
+                        if scanning {
+                            match key.code {
+                                KeyCode::Esc => {
+                                    scan_cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    scan_cancelled = true;
+                                    back_to_menu = true;
+                                }
+                                KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                    scan_cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+                                    scan_cancelled = true;
+                                }
+                                _ => {}
+                            }
+                            continue;
+                        }
                         match state.input_mode {
                             InputMode::Normal => match key.code {
-                                KeyCode::Char('q') | KeyCode::Esc => {
+                                KeyCode::Char('q') | KeyCode::Char('Q') => {
+                                    state.input_mode = InputMode::Exiting;
+                                    break;
+                                }
+                                KeyCode::Esc => {
+                                    back_to_menu = true;
                                     state.input_mode = InputMode::Exiting;
                                     break;
                                 }
@@ -288,6 +325,7 @@ impl InteractiveMode {
         let report = SessionReport {
             freed: state.session_freed,
             cleaned: state.session_cleaned,
+            back_to_menu,
         };
         let _ = handle.join();
         // Restore terminal before the caller prints anything.

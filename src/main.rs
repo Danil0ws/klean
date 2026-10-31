@@ -97,77 +97,99 @@ fn main() -> Result<()> {
         patterns.extend(custom.clone());
     }
 
-    // Create scanner
-    let mut scanner = ArtifactScanner::new(root.clone(), ignore_rules, patterns);
-
-    scanner = scanner.with_filter(cli.filter.clone());
-    scanner = scanner.with_allow_system_paths(cli.allow_system_paths);
-    scanner = scanner.with_project_rules(final_config.projects.clone().unwrap_or_default());
-
-    if let Some(min_size_str) = &cli.min_size {
-        let min_size = parse_size(min_size_str)?;
-        scanner = scanner.with_size_limits(Some(min_size), None);
-    }
-
-    if let Some(max_size_str) = &cli.max_size {
-        let max_size = parse_size(max_size_str)?;
-        scanner = scanner.with_size_limits(None, Some(max_size));
-    }
-
     // Interactive mode scans inside the UI, so its loading screen can show what
     // is being read; that means it must own the scan.
     let is_tty = std::io::stdout().is_terminal();
     if matches!(mode, Mode::Interactive) && is_tty && !cli.yes && !cli.dry_run {
         let version = env!("CARGO_PKG_VERSION");
-        let choice = run_menu(version)?;
-        match choice {
-            MenuChoice::Quit => return Ok(()),
-            MenuChoice::Stats => {
-                let path = history::history_path()?;
-                return history::print_stats(&path, cli.json);
-            }
-            MenuChoice::Globals => {
-                let report = run_globals(cli.dry_run)?;
-                if report.removed > 0 && !cli.quiet {
-                    println!(
-                        "✓ {} package(s) removed{}",
-                        report.removed,
-                        if report.freed > 0 {
-                            format!(
-                                " — {} freed",
-                                humansize::format_size(report.freed, humansize::BINARY)
-                            )
-                        } else {
-                            String::new()
-                        }
-                    );
+        loop {
+            let choice = run_menu(version)?;
+            match choice {
+                MenuChoice::Quit => return Ok(()),
+                MenuChoice::Stats => {
+                    let path = history::history_path()?;
+                    return history::print_stats(&path, cli.json);
                 }
-                return Ok(());
-            }
-            MenuChoice::Update => {
-                update::self_update(cli.dry_run)?;
-                return Ok(());
-            }
-            MenuChoice::Clean => {
-                let report = InteractiveMode::run_scan(
-                    scanner,
-                    CleanContext {
-                        backup_dir: final_config.backup_dir.clone(),
-                        root: root.clone(),
-                        allow_system_paths: cli.allow_system_paths,
-                    },
-                )?;
+                MenuChoice::Globals => {
+                    let report = run_globals(cli.dry_run)?;
+                    if report.removed > 0 && !cli.quiet {
+                        println!(
+                            "✓ {} package(s) removed{}",
+                            report.removed,
+                            if report.freed > 0 {
+                                format!(
+                                    " — {} freed",
+                                    humansize::format_size(report.freed, humansize::BINARY)
+                                )
+                            } else {
+                                String::new()
+                            }
+                        );
+                    }
+                    return Ok(());
+                }
+                MenuChoice::Update => {
+                    update::self_update(cli.dry_run)?;
+                    return Ok(());
+                }
+                MenuChoice::Clean => {
+                    // Build a fresh scanner each time so back-to-menu works.
+                    let fresh_ignore = if let Some(klignore_path) = &cli.klignore {
+                        IgnoreRules::from_custom_file(klignore_path)?
+                    } else {
+                        IgnoreRules::from_path(&root, respect_gitignore)?
+                    };
+                    let mut scanner =
+                        ArtifactScanner::new(root.clone(), fresh_ignore, patterns.clone());
+                    scanner = scanner.with_filter(cli.filter.clone());
+                    scanner = scanner.with_allow_system_paths(cli.allow_system_paths);
+                    scanner = scanner
+                        .with_project_rules(final_config.projects.clone().unwrap_or_default());
+                    if let Some(min_size_str) = &cli.min_size {
+                        scanner = scanner.with_size_limits(Some(parse_size(min_size_str)?), None);
+                    }
+                    if let Some(max_size_str) = &cli.max_size {
+                        scanner = scanner.with_size_limits(None, Some(parse_size(max_size_str)?));
+                    }
 
-                if !cli.quiet && report.cleaned > 0 {
-                    println!(
-                        "✓ {} freed across {} item(s) — `klean undo` restores from trash",
-                        humansize::format_size(report.freed, humansize::BINARY),
-                        report.cleaned
-                    );
+                    let report = InteractiveMode::run_scan(
+                        scanner,
+                        CleanContext {
+                            backup_dir: final_config.backup_dir.clone(),
+                            root: root.clone(),
+                            allow_system_paths: cli.allow_system_paths,
+                        },
+                    )?;
+
+                    if report.back_to_menu {
+                        continue;
+                    }
+
+                    if !cli.quiet && report.cleaned > 0 {
+                        println!(
+                            "✓ {} freed across {} item(s) — `klean undo` restores from trash",
+                            humansize::format_size(report.freed, humansize::BINARY),
+                            report.cleaned
+                        );
+                    }
+                    return Ok(());
                 }
-                return Ok(());
             }
         }
+    }
+
+    // Non-interactive / non-TTY path: build scanner once.
+    let mut scanner = ArtifactScanner::new(root.clone(), ignore_rules, patterns);
+    scanner = scanner.with_filter(cli.filter.clone());
+    scanner = scanner.with_allow_system_paths(cli.allow_system_paths);
+    scanner = scanner.with_project_rules(final_config.projects.clone().unwrap_or_default());
+    if let Some(min_size_str) = &cli.min_size {
+        let min_size = parse_size(min_size_str)?;
+        scanner = scanner.with_size_limits(Some(min_size), None);
+    }
+    if let Some(max_size_str) = &cli.max_size {
+        let max_size = parse_size(max_size_str)?;
+        scanner = scanner.with_size_limits(None, Some(max_size));
     }
 
     // Modes that own the scan loop themselves.

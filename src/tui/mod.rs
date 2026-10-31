@@ -129,6 +129,8 @@ pub struct ScanFeed {
     pub done: bool,
     /// Artifacts, or the message to show instead of a list.
     pub outcome: Option<Result<Vec<Artifact>, String>>,
+    /// Set to true from the UI thread to abort the scan early.
+    pub cancel: Arc<AtomicBool>,
 }
 
 impl Default for ScanFeed {
@@ -145,6 +147,7 @@ impl ScanFeed {
             dirs: 0,
             done: false,
             outcome: None,
+            cancel: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -668,7 +671,7 @@ impl Tui {
 
         lines.push(Line::from(vec![
             Span::styled(format!("{frame} "), Style::default().fg(Color::Cyan)),
-            Span::raw("lendo pastas e arquivos"),
+            Span::raw("reading folders and files"),
         ]));
 
         let seconds = elapsed.as_secs_f32();
@@ -678,7 +681,7 @@ impl Tui {
             String::new()
         };
         lines.push(Line::from(Span::styled(
-            format!("{} pastas{rate} · {}", feed.dirs, clock(elapsed)),
+            format!("{} folders{rate} · {}", feed.dirs, clock(elapsed)),
             Style::default().fg(Color::DarkGray),
         )));
 
@@ -693,6 +696,11 @@ impl Tui {
                 Style::default().fg(Color::Gray),
             )));
         }
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Esc — back to menu  ·  Q — quit",
+            Style::default().fg(Color::DarkGray),
+        )));
 
         let rect = centered_rect(
             area,
@@ -742,10 +750,10 @@ impl Tui {
         let bold = Style::default().add_modifier(Modifier::BOLD);
         let header = Row::new(vec![
             Cell::from(" "),
-            Cell::from("ARTEFATO").style(bold),
-            Cell::from(Line::from("TAMANHO").alignment(Alignment::Right)).style(bold),
+            Cell::from("ARTIFACT").style(bold),
+            Cell::from(Line::from("SIZE").alignment(Alignment::Right)).style(bold),
             Cell::from(""),
-            Cell::from("PROJETO / CAMINHO").style(bold),
+            Cell::from("PROJECT / PATH").style(bold),
         ])
         .style(Style::default().fg(Color::Cyan))
         .height(1);
@@ -806,7 +814,7 @@ impl Tui {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::raw(format!(
-                " {} artefatos · {} projetos · {} ",
+                " {} artifacts · {} projects · {} ",
                 state.artifacts.len(),
                 state.project_count(),
                 bytes(total)
@@ -858,7 +866,8 @@ impl Tui {
                 ("I", "invert"),
                 ("D", "none"),
                 ("Enter", "clean"),
-                ("Q", "sair"),
+                ("Q", "quit"),
+                ("Esc", "menu"),
             ]
             .into_iter()
             .flat_map(|(key, label)| key_hint(key, label))
@@ -1117,7 +1126,7 @@ impl Tui {
         let mut header = Vec::new();
         if feed.started.elapsed() < CONFIRMED_BADGE {
             header.push(Span::styled(
-                " ✓ CONFIRMADO ",
+                " ✓ CONFIRMED ",
                 Style::default()
                     .bg(Color::Green)
                     .fg(Color::Black)
