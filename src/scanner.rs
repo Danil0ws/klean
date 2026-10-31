@@ -6,6 +6,8 @@ use humansize::format_size;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 // Directories we never descend into unless the name itself is an artifact
@@ -193,6 +195,8 @@ pub struct ArtifactScanner {
     project_rules: Vec<ProjectRule>,
     /// Called with every directory the walk visits (drives the CLI spinner).
     progress: Option<ProgressFn>,
+    /// Set to true from outside to abort the walk early.
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl ArtifactScanner {
@@ -207,6 +211,7 @@ impl ArtifactScanner {
             allow_system_paths: false,
             project_rules: Vec::new(),
             progress: None,
+            cancel: None,
         }
     }
 
@@ -234,6 +239,13 @@ impl ArtifactScanner {
     /// Report every directory the walk enters, for a live progress indicator.
     pub fn with_progress(mut self, progress: ProgressFn) -> Self {
         self.progress = Some(progress);
+        self
+    }
+
+    /// Attach a cancellation flag: when set to true the walk stops early and
+    /// returns whatever artifacts were found so far.
+    pub fn with_cancel(mut self, cancel: Arc<AtomicBool>) -> Self {
+        self.cancel = Some(cancel);
         self
     }
 
@@ -280,6 +292,13 @@ impl ArtifactScanner {
         blocked: &mut Vec<Blocked>,
     ) {
         for path in dirs {
+            if self
+                .cancel
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::Relaxed))
+            {
+                return;
+            }
             if let Some(progress) = &self.progress {
                 progress(path);
             }
