@@ -52,6 +52,12 @@ Inspired by [npkill](https://github.com/voidcosmos/npkill), **klean** expands th
 
 ## Installation
 
+**All**
+```bash
+curl -fsSL https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.sh | sh
+# options: --version v1.7.1  --prefix /usr/local/bin  --dry-run
+```
+
 ### Quick Install
 
 **macOS (Homebrew)**
