@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::{Block, Borders, Cell, Clear, Gauge, Paragraph, Row, Table, TableState},
+    widgets::{Block, Borders, Cell, Clear, Gauge, Paragraph, Row, TableState},
     Frame, Terminal,
 };
 use std::cmp::Reverse;
@@ -23,6 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::globals::{check_updates, scan_all, uninstall, GlobalPackage, Manager};
+use super::Tui;
 
 pub struct GlobalsReport {
     pub removed: usize,
@@ -443,9 +444,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
             .style(Style::default().add_modifier(Modifier::BOLD)),
         Cell::from(""),
         Cell::from("MANAGER / VERSION").style(Style::default().add_modifier(Modifier::BOLD)),
-    ])
-    .style(Style::default().fg(Color::Cyan))
-    .height(1);
+    ]);
 
     let filtered = state.filtered_indices();
     let rows: Vec<Row> = filtered
@@ -476,7 +475,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
 
             Row::new(vec![
                 Cell::from(checkbox),
-                Cell::from(pkg.name.as_str()),
+                Cell::from(pkg.name.clone()),
                 Cell::from(
                     Line::from(pkg.size_string()).alignment(ratatui::layout::Alignment::Right),
                 )
@@ -503,21 +502,14 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
     }
     let title = title_parts.join("");
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Length(2),  // checkbox
-            Constraint::Min(16),    // PACKAGE
-            Constraint::Length(12), // SIZE (right-aligned)
-            Constraint::Length(8),  // spacer
-            Constraint::Min(20),    // MANAGER / VERSION
-        ],
-    )
-    .header(header)
-    .block(Block::default().borders(Borders::ALL).title(title))
-    .highlight_style(Style::default().bg(Color::DarkGray));
-
-    f.render_stateful_widget(table, area, &mut state.table);
+    let widths = [
+        Constraint::Length(2),
+        Constraint::Min(16),
+        Constraint::Length(12),
+        Constraint::Length(8),
+        Constraint::Min(20),
+    ];
+    Tui::render_table(f, area, &mut state.table, header, rows, &widths, Color::Cyan, Some(title));
 }
 
 fn render_confirm_dialog(f: &mut Frame, state: &State, area: Rect) {

@@ -649,6 +649,32 @@ pub struct Tui;
 
 impl Tui {
     /// Loading screen: logo, the directory being read, counters, elapsed time.
+    /// Reusable table renderer shared by ia/globals TUIs.
+    #[allow(clippy::too_many_arguments)]
+    pub fn render_table(
+        f: &mut Frame,
+        area: Rect,
+        state: &mut TableState,
+        header: Row<'static>,
+        rows: Vec<Row<'static>>,
+        widths: &[Constraint],
+        header_color: Color,
+        title: Option<String>,
+    ) {
+        let header = header
+            .style(Style::default().fg(header_color).add_modifier(Modifier::BOLD))
+            .height(1);
+        let mut block = Block::default().borders(Borders::ALL);
+        if let Some(t) = title {
+            block = block.title(t);
+        }
+        let table = Table::new(rows, widths)
+            .header(header)
+            .block(block)
+            .highlight_style(Style::default().bg(Color::DarkGray));
+        f.render_stateful_widget(table, area, state);
+    }
+
     pub fn render_scanning(f: &mut Frame, feed: &ScanFeed, root: &Path) {
         let area = f.area();
         let elapsed = feed.elapsed();
