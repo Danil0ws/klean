@@ -5,6 +5,7 @@ pub mod cli;
 pub mod config;
 pub mod globals;
 pub mod history;
+pub mod ia;
 pub mod ignore;
 pub mod patterns;
 pub mod plugins;

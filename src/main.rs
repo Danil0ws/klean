@@ -64,6 +64,24 @@ fn main() -> Result<()> {
         Mode::Update => {
             return update::self_update(cli.dry_run);
         }
+        Mode::IA => {
+            let report = klean::tui::run_ia(cli.dry_run)?;
+            if report.removed > 0 && !cli.quiet {
+                println!(
+                    "✓ {} AI item(s) removed{}",
+                    report.removed,
+                    if report.freed > 0 {
+                        format!(
+                            " — {} freed",
+                            humansize::format_size(report.freed, humansize::BINARY)
+                        )
+                    } else {
+                        String::new()
+                    }
+                );
+            }
+            return Ok(());
+        }
         _ => {}
     }
 
@@ -115,6 +133,24 @@ fn main() -> Result<()> {
                     if report.removed > 0 && !cli.quiet {
                         println!(
                             "✓ {} package(s) removed{}",
+                            report.removed,
+                            if report.freed > 0 {
+                                format!(
+                                    " — {} freed",
+                                    humansize::format_size(report.freed, humansize::BINARY)
+                                )
+                            } else {
+                                String::new()
+                            }
+                        );
+                    }
+                    return Ok(());
+                }
+                MenuChoice::IA => {
+                    let report = klean::tui::run_ia(cli.dry_run)?;
+                    if report.removed > 0 && !cli.quiet {
+                        println!(
+                            "✓ {} AI item(s) removed{}",
                             report.removed,
                             if report.freed > 0 {
                                 format!(

@@ -141,6 +141,9 @@ pub enum Mode {
     /// Check for a new klean version and self-update
     #[value(name = "update")]
     Update,
+    /// Organize AI environment (skills, CLIs, MCP servers)
+    #[value(name = "ia")]
+    IA,
 }
 
 impl Cli {
