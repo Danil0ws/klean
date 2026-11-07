@@ -13,6 +13,7 @@ pub enum Manager {
     Npm,
     Pip,
     Binary,
+    Runtime,
 }
 
 impl Manager {
@@ -23,6 +24,7 @@ impl Manager {
             Manager::Pip => "pip",
             Manager::Brew => "brew",
             Manager::Binary => "binary",
+            Manager::Runtime => "runtime",
         }
     }
 
@@ -33,6 +35,7 @@ impl Manager {
             Manager::Pip => "🐍",
             Manager::Brew => "🍺",
             Manager::Binary => "⚙️",
+            Manager::Runtime => "🧩",
         }
     }
 }
@@ -46,6 +49,8 @@ pub struct GlobalPackage {
     pub size_bytes: u64,
     /// Latest version available (Some only after check_updates is run).
     pub update_available: Option<String>,
+    /// Install location (for version managers / binaries).
+    pub path: Option<PathBuf>,
 }
 
 impl GlobalPackage {
@@ -70,6 +75,7 @@ pub fn scan_all() -> Vec<GlobalPackage> {
     packages.extend(scan_pip());
     packages.extend(scan_brew());
     packages.extend(scan_binaries());
+    packages.extend(scan_runtimes());
     packages
 }
 
@@ -114,6 +120,19 @@ pub fn uninstall(pkg: &GlobalPackage, dry_run: bool) -> Result<()> {
             }
             bail!("binary {} not found in ~/.local/bin or ~/bin", pkg.name)
         }
+        Manager::Runtime => {
+            if let Some(path) = &pkg.path {
+                if path.exists() {
+                    if path.is_dir() {
+                        std::fs::remove_dir_all(path)?;
+                    } else {
+                        std::fs::remove_file(path)?;
+                    }
+                    return Ok(());
+                }
+            }
+            bail!("runtime {} not found", pkg.name)
+        }
     }
 }
 
@@ -129,6 +148,7 @@ pub fn update_package(pkg: &GlobalPackage, dry_run: bool) -> Result<()> {
             .or_else(|_| run("pip", &["install", "--upgrade", &pkg.name])),
         Manager::Brew => run("brew", &["upgrade", &pkg.name]),
         Manager::Binary => bail!("auto-update not supported for binary packages"),
+        Manager::Runtime => bail!("auto-update not supported for runtime versions"),
     }
 }
 
@@ -149,6 +169,7 @@ fn make_pkg(name: String, version: String, manager: Manager, size_bytes: u64) ->
         manager,
         size_bytes,
         update_available: None,
+        path: None,
     }
 }
 
@@ -579,6 +600,95 @@ fn dir_size(path: &Path) -> u64 {
         }
     }
     total
+}
+
+fn scan_runtimes() -> Vec<GlobalPackage> {
+    let mut packages = Vec::new();
+    let home = match home_dir() {
+        Some(h) => h,
+        None => return packages,
+    };
+
+    let roots: Vec<(&str, Vec<PathBuf>)> = vec![
+        (
+            "node",
+            vec![
+                home.join(".nvm").join("versions").join("node"),
+                home.join(".local")
+                    .join("share")
+                    .join("fnm")
+                    .join("node-versions"),
+                home.join(".fnm").join("node-versions"),
+                home.join(".volta").join("tools").join("image").join("node"),
+                home.join(".asdf").join("installs").join("nodejs"),
+                home.join(".local")
+                    .join("share")
+                    .join("mise")
+                    .join("installs")
+                    .join("node"),
+            ],
+        ),
+        (
+            "python",
+            vec![
+                home.join(".pyenv").join("versions"),
+                home.join(".asdf").join("installs").join("python"),
+                home.join(".local")
+                    .join("share")
+                    .join("mise")
+                    .join("installs")
+                    .join("python"),
+            ],
+        ),
+        (
+            "java",
+            vec![
+                home.join(".sdkman").join("candidates").join("java"),
+                home.join(".asdf").join("installs").join("java"),
+                home.join(".local")
+                    .join("share")
+                    .join("mise")
+                    .join("installs")
+                    .join("java"),
+                home.join(".jenv").join("versions"),
+            ],
+        ),
+    ];
+
+    for (runtime, dirs) in roots {
+        for dir in dirs {
+            if !dir.exists() {
+                continue;
+            }
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_dir() {
+                    continue;
+                }
+                let name = match path.file_name().and_then(|n| n.to_str()) {
+                    Some(n) if !n.starts_with('.') => n.to_string(),
+                    _ => continue,
+                };
+                if name == "current" || name == "default" || name == "system" {
+                    continue;
+                }
+                let size_bytes = dir_size(&path);
+                packages.push(GlobalPackage {
+                    name: format!("{} {}", runtime, name),
+                    version: name,
+                    manager: Manager::Runtime,
+                    size_bytes,
+                    update_available: None,
+                    path: Some(path),
+                });
+            }
+        }
+    }
+
+    packages
 }
 
 fn home_dir() -> Option<PathBuf> {

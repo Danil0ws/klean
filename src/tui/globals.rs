@@ -391,6 +391,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
                 Manager::Pip => Color::Blue,
                 Manager::Brew => Color::Green,
                 Manager::Binary => Color::Magenta,
+                Manager::Runtime => Color::Cyan,
             };
             let row_style = if is_sel {
                 Style::default().fg(Color::Green)
