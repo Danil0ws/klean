@@ -444,7 +444,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
         Cell::from(""),
         Cell::from("MANAGER / VERSION").style(Style::default().add_modifier(Modifier::BOLD)),
     ])
-    .style(Style::default().fg(Color::Yellow))
+    .style(Style::default().fg(Color::Cyan))
     .height(1);
 
     let filtered = state.filtered_indices();
