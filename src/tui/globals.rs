@@ -38,6 +38,13 @@ enum UiState {
     Done,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum FilterMode {
+    All,
+    Packages,
+    Runtimes,
+}
+
 struct State {
     packages: Vec<GlobalPackage>,
     selected: BTreeSet<usize>,
@@ -47,6 +54,9 @@ struct State {
     remove_idx: usize,
     report: GlobalsReport,
     sort_by_size: bool,
+    filter: FilterMode,
+    search: String,
+    search_mode: bool,
     updates: HashMap<String, String>,
     update_scan: Arc<Mutex<Option<HashMap<String, String>>>>,
     update_scan_done: Arc<AtomicBool>,
@@ -69,6 +79,9 @@ impl State {
                 freed: 0,
             },
             sort_by_size: false,
+            filter: FilterMode::All,
+            search: String::new(),
+            search_mode: false,
             updates: HashMap::new(),
             update_scan: Arc::new(Mutex::new(None)),
             update_scan_done: Arc::new(AtomicBool::new(false)),
@@ -77,13 +90,34 @@ impl State {
     }
 
     fn toggle_current(&mut self) {
-        if let Some(i) = self.table.selected() {
-            if self.selected.contains(&i) {
-                self.selected.remove(&i);
-            } else {
-                self.selected.insert(i);
+        let filtered = self.filtered_indices();
+        if let Some(pos) = self.table.selected() {
+            if let Some(&orig) = filtered.get(pos) {
+                if self.selected.contains(&orig) {
+                    self.selected.remove(&orig);
+                } else {
+                    self.selected.insert(orig);
+                }
             }
         }
+    }
+
+    fn filtered_indices(&self) -> Vec<usize> {
+        let q = self.search.to_lowercase();
+        self.packages
+            .iter()
+            .enumerate()
+            .filter(|(_, pkg)| {
+                let type_ok = match self.filter {
+                    FilterMode::All => true,
+                    FilterMode::Packages => pkg.manager != Manager::Runtime,
+                    FilterMode::Runtimes => pkg.manager == Manager::Runtime,
+                };
+                let search_ok = q.is_empty() || pkg.name.to_lowercase().contains(&q);
+                type_ok && search_ok
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
 
     fn select_all(&mut self) {
@@ -95,7 +129,7 @@ impl State {
     }
 
     fn move_cursor(&mut self, delta: i64) {
-        let len = self.packages.len();
+        let len = self.filtered_indices().len();
         if len == 0 {
             return;
         }
@@ -109,6 +143,15 @@ impl State {
             .iter()
             .filter_map(|&i| self.packages.get(i).cloned())
             .collect()
+    }
+
+    fn cycle_filter(&mut self) {
+        self.filter = match self.filter {
+            FilterMode::All => FilterMode::Packages,
+            FilterMode::Packages => FilterMode::Runtimes,
+            FilterMode::Runtimes => FilterMode::All,
+        };
+        self.table.select(Some(0));
     }
 
     fn sort_packages(&mut self) {
@@ -255,22 +298,41 @@ pub fn run_globals(dry_run: bool) -> Result<GlobalsReport> {
                         });
                     }
                 }
-                UiState::Listing => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(state.report),
-                    KeyCode::Down | KeyCode::Char('j') => state.move_cursor(1),
-                    KeyCode::Up | KeyCode::Char('k') => state.move_cursor(-1),
-                    KeyCode::Char(' ') => state.toggle_current(),
-                    KeyCode::Char('a') => state.select_all(),
-                    KeyCode::Char('s') => {
-                        state.sort_by_size = !state.sort_by_size;
-                        state.sort_packages();
+                UiState::Listing => {
+                    if state.search_mode {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => state.search_mode = false,
+                            KeyCode::Backspace => {
+                                state.search.pop();
+                                state.table.select(Some(0));
+                            }
+                            KeyCode::Char(c) => {
+                                state.search.push(c);
+                                state.table.select(Some(0));
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => return Ok(state.report),
+                            KeyCode::Char('/') => state.search_mode = true,
+                            KeyCode::Down | KeyCode::Char('j') => state.move_cursor(1),
+                            KeyCode::Up | KeyCode::Char('k') => state.move_cursor(-1),
+                            KeyCode::Char(' ') => state.toggle_current(),
+                            KeyCode::Char('a') => state.select_all(),
+                            KeyCode::Char('s') => {
+                                state.sort_by_size = !state.sort_by_size;
+                                state.sort_packages();
+                            }
+                            KeyCode::Char('f') => state.cycle_filter(),
+                            KeyCode::Char('u') => state.start_update_check(),
+                            KeyCode::Enter if !state.selected.is_empty() => {
+                                state.ui = UiState::Confirming;
+                            }
+                            _ => {}
+                        }
                     }
-                    KeyCode::Char('u') => state.start_update_check(),
-                    KeyCode::Enter if !state.selected.is_empty() => {
-                        state.ui = UiState::Confirming;
-                    }
-                    _ => {}
-                },
+                }
                 UiState::Confirming => match key.code {
                     KeyCode::Char('y') | KeyCode::Enter => {
                         state.ui = UiState::Removing;
@@ -335,10 +397,16 @@ fn render(f: &mut Frame, state: &mut State) {
 
     let footer_text = match state.ui {
         UiState::Scanning => " Scanning… ".to_string(),
-        UiState::Listing => format!(
-            " ↑↓/jk  Space select  a all  {} s  u updates  Enter remove  q quit {}",
-            sort_label, update_status
-        ),
+        UiState::Listing => {
+            if state.search_mode {
+                format!(" search: {} (Enter/Esc to finish) ", state.search)
+            } else {
+                format!(
+                    " ↑↓/jk  Space select  a all  {} s  f filter  / search  u updates  Enter remove  q quit {}",
+                    sort_label, update_status
+                )
+            }
+        }
         UiState::Confirming => " y/Enter confirm removal  n/Esc cancel ".to_string(),
         UiState::Removing => " Removing… ".to_string(),
         UiState::Done => " Press any key to exit ".to_string(),
@@ -379,11 +447,11 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
     .style(Style::default().fg(Color::Yellow))
     .height(1);
 
-    let rows: Vec<Row> = state
-        .packages
+    let filtered = state.filtered_indices();
+    let rows: Vec<Row> = filtered
         .iter()
-        .enumerate()
-        .map(|(i, pkg)| {
+        .map(|&i| {
+            let pkg = &state.packages[i];
             let is_sel = state.selected.contains(&i);
             let checkbox = if is_sel { "◉" } else { "○" };
             let mgr_color = match pkg.manager {

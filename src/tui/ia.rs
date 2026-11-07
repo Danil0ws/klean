@@ -48,6 +48,8 @@ struct State {
     report: IAReport,
     sort_by_size: bool,
     filter: FilterMode,
+    search: String,
+    search_mode: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -76,6 +78,8 @@ impl State {
             },
             sort_by_size: false,
             filter: FilterMode::All,
+            search: String::new(),
+            search_mode: false,
         }
     }
 
@@ -117,7 +121,8 @@ impl State {
     }
 
     fn filtered_items(&self) -> Vec<AIItem> {
-        let items = match self.filter {
+        let q = self.search.to_lowercase();
+        let base: Vec<AIItem> = match self.filter {
             FilterMode::All => self.items.clone(),
             FilterMode::Skills => self
                 .items
@@ -144,7 +149,13 @@ impl State {
                 .cloned()
                 .collect(),
         };
-        items
+        if q.is_empty() {
+            base
+        } else {
+            base.into_iter()
+                .filter(|i| i.name.to_lowercase().contains(&q))
+                .collect()
+        }
     }
 
     fn selected_items(&self) -> Vec<AIItem> {
@@ -281,23 +292,45 @@ pub fn run_ia(dry_run: bool) -> Result<IAReport> {
                         });
                     }
                 }
-                UiState::Listing => match key.code {
-                    KeyCode::Char('q') | KeyCode::Esc => return Ok(state.report),
-                    KeyCode::Down | KeyCode::Char('j') => state.move_cursor(1),
-                    KeyCode::Up | KeyCode::Char('k') => state.move_cursor(-1),
-                    KeyCode::Char(' ') => state.toggle_current(),
-                    KeyCode::Char('a') => state.select_all(),
-                    KeyCode::Char('d') => state.select_all_duplicates(),
-                    KeyCode::Char('s') => {
-                        state.sort_by_size = !state.sort_by_size;
-                        state.sort_items();
+                UiState::Listing => {
+                    if state.search_mode {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Enter => {
+                                state.search_mode = false;
+                            }
+                            KeyCode::Backspace => {
+                                state.search.pop();
+                                state.table.select(Some(0));
+                            }
+                            KeyCode::Char(c) => {
+                                state.search.push(c);
+                                state.table.select(Some(0));
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        match key.code {
+                            KeyCode::Char('q') | KeyCode::Esc => return Ok(state.report),
+                            KeyCode::Char('/') => {
+                                state.search_mode = true;
+                            }
+                            KeyCode::Down | KeyCode::Char('j') => state.move_cursor(1),
+                            KeyCode::Up | KeyCode::Char('k') => state.move_cursor(-1),
+                            KeyCode::Char(' ') => state.toggle_current(),
+                            KeyCode::Char('a') => state.select_all(),
+                            KeyCode::Char('d') => state.select_all_duplicates(),
+                            KeyCode::Char('s') => {
+                                state.sort_by_size = !state.sort_by_size;
+                                state.sort_items();
+                            }
+                            KeyCode::Char('f') => state.cycle_filter(),
+                            KeyCode::Enter if !state.selected.is_empty() => {
+                                state.ui = UiState::Confirming;
+                            }
+                            _ => {}
+                        }
                     }
-                    KeyCode::Char('f') => state.cycle_filter(),
-                    KeyCode::Enter if !state.selected.is_empty() => {
-                        state.ui = UiState::Confirming;
-                    }
-                    _ => {}
-                },
+                }
                 UiState::Confirming => match key.code {
                     KeyCode::Char('y') | KeyCode::Enter => {
                         state.ui = UiState::Removing;
@@ -355,10 +388,16 @@ fn render(f: &mut Frame, state: &mut State) {
 
     let footer_text = match state.ui {
         UiState::Scanning => " Scanning AI environment… ".to_string(),
-        UiState::Listing => format!(
-            " ↑↓/jk  Space select  a all  d dupes  {} s  filter:{} f  Enter remove  q quit ",
-            sort_label, filter_label
-        ),
+        UiState::Listing => {
+            if state.search_mode {
+                format!(" search: {} (Enter/Esc to finish) ", state.search)
+            } else {
+                format!(
+                    " ↑↓/jk  Space select  a all  d dupes  {} s  filter:{} f  / search  Enter remove  q quit ",
+                    sort_label, filter_label
+                )
+            }
+        }
         UiState::Confirming => " y/Enter confirm removal  n/Esc cancel ".to_string(),
         UiState::Removing => " Removing… ".to_string(),
         UiState::Done => " Press any key to exit ".to_string(),
