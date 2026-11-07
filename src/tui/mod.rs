@@ -13,10 +13,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub mod globals;
+pub mod ia;
 pub mod interactive;
 pub mod menu;
 
 pub use globals::run_globals;
+pub use ia::run_ia;
 pub use interactive::InteractiveMode;
 pub use menu::{run_menu, MenuChoice};
 

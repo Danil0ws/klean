@@ -69,11 +69,11 @@ impl InteractiveMode {
             let scanner = scanner
                 .with_cancel(cancel_for_scanner)
                 .with_progress(Box::new(move |path: &Path| {
-                if let Ok(mut feed) = progress.lock() {
-                    feed.current = Some(path.to_path_buf());
-                    feed.dirs += 1;
-                }
-            }));
+                    if let Ok(mut feed) = progress.lock() {
+                        feed.current = Some(path.to_path_buf());
+                        feed.dirs += 1;
+                    }
+                }));
 
             let outcome = scanner.scan();
             let mut feed = worker.lock().unwrap_or_else(|error| error.into_inner());

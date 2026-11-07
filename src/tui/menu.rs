@@ -25,6 +25,7 @@ use crate::update::VersionInfo;
 pub enum MenuChoice {
     Clean,
     Globals,
+    IA,
     Stats,
     Update,
     Quit,
@@ -50,6 +51,11 @@ const BASE_ITEMS: &[(MenuChoice, &str, &str)] = &[
         MenuChoice::Globals,
         "Global packages",
         "npm, cargo, pip, brew, binaries",
+    ),
+    (
+        MenuChoice::IA,
+        "AI environment",
+        "skills, CLIs, MCP servers",
     ),
     (MenuChoice::Stats, "Statistics", "cleanup history"),
     (MenuChoice::Quit, "Quit", ""),
@@ -137,10 +143,11 @@ pub fn run_menu(version: &str) -> Result<MenuChoice> {
                 }
                 KeyCode::Char('1') => return Ok(MenuChoice::Clean),
                 KeyCode::Char('2') => return Ok(MenuChoice::Globals),
-                KeyCode::Char('3') => return Ok(MenuChoice::Stats),
-                KeyCode::Char('4') if !has_update => return Ok(MenuChoice::Quit),
-                KeyCode::Char('4') if has_update => return Ok(MenuChoice::Update),
-                KeyCode::Char('5') if has_update => return Ok(MenuChoice::Quit),
+                KeyCode::Char('3') => return Ok(MenuChoice::IA),
+                KeyCode::Char('4') => return Ok(MenuChoice::Stats),
+                KeyCode::Char('5') if !has_update => return Ok(MenuChoice::Quit),
+                KeyCode::Char('5') if has_update => return Ok(MenuChoice::Update),
+                KeyCode::Char('6') if has_update => return Ok(MenuChoice::Quit),
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(MenuChoice::Quit),
                 KeyCode::Enter => {
                     let choice = item_at(state.cursor, has_update);
@@ -289,7 +296,7 @@ fn render(f: &mut Frame, state: &State, version: &str, vi: Option<&VersionInfo>)
         })
         .collect();
 
-    let shortcut_max = if has_update { "1-5" } else { "1-4" };
+    let shortcut_max = if has_update { "1-6" } else { "1-5" };
     lines.push(Line::from(""));
     lines.push(Line::from(Span::styled(
         format!(

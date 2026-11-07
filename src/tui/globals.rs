@@ -370,10 +370,10 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
 
     let header = Row::new(vec![
         Cell::from(""),
-        Cell::from("Manager").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Package").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Version").style(Style::default().add_modifier(Modifier::BOLD)),
-        Cell::from("Size").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("PACKAGE").style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from(Line::from("SIZE").alignment(ratatui::layout::Alignment::Right))
+            .style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from("MANAGER / VERSION").style(Style::default().add_modifier(Modifier::BOLD)),
     ])
     .style(Style::default().fg(Color::Yellow))
     .height(1);
@@ -398,23 +398,20 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
                 Style::default()
             };
 
-            let version_cell = if let Some(ref latest) = pkg.update_available {
-                Cell::from(format!("{} ⬆{}", pkg.version, latest)).style(
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
-                )
+            let manager_version = if let Some(ref latest) = pkg.update_available {
+                format!("{} {} → {}", pkg.manager.icon(), pkg.version, latest)
             } else {
-                Cell::from(pkg.version.as_str()).style(Style::default().fg(Color::DarkGray))
+                format!("{} {}", pkg.manager.icon(), pkg.version)
             };
 
             Row::new(vec![
                 Cell::from(checkbox),
-                Cell::from(format!("{} {}", pkg.manager.icon(), pkg.manager.label()))
-                    .style(Style::default().fg(mgr_color)),
                 Cell::from(pkg.name.as_str()),
-                version_cell,
-                Cell::from(pkg.size_string()).style(Style::default().fg(Color::Cyan)),
+                Cell::from(
+                    Line::from(pkg.size_string()).alignment(ratatui::layout::Alignment::Right),
+                )
+                .style(Style::default().fg(Color::Cyan)),
+                Cell::from(manager_version).style(Style::default().fg(mgr_color)),
             ])
             .style(row_style)
         })
@@ -438,11 +435,10 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
     let table = Table::new(
         rows,
         [
-            Constraint::Length(2),
-            Constraint::Length(14),
-            Constraint::Min(24),
-            Constraint::Length(18),
-            Constraint::Length(10),
+            Constraint::Length(2),  // checkbox
+            Constraint::Min(24),    // PACKAGE
+            Constraint::Length(12), // SIZE (right-aligned)
+            Constraint::Min(20),    // MANAGER / VERSION
         ],
     )
     .header(header)
