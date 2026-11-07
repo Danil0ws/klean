@@ -55,7 +55,7 @@ Inspired by [npkill](https://github.com/voidcosmos/npkill), **klean** expands th
 **All**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.sh | sh
-# options: --version v1.7.1  --prefix /usr/local/bin  --dry-run
+# options: --version v1.8.0  --prefix /usr/local/bin  --dry-run
 ```
 
 ### Quick Install
@@ -194,6 +194,34 @@ klean --min-size 50MB --max-size 500MB
 
 # Size units: B, KB, MB, GB (case-insensitive)
 klean --min-size 1.5GB
+```
+
+## AI Environment (`klean ia`)
+
+Organize skills, CLIs and MCP servers across your AI tools (Claude Code,
+Copilot, Codex, Gemini, Hermes, OpenCode, Cursor, Cline, Goose, Amp, Kimi,
+Warp, Dexto, Replit and more).
+
+```bash
+# Interactive TUI
+klean ia
+
+# Non-interactive dry run
+klean ia --dry-run
+```
+
+The scanner looks in every tool's global skill directory plus shared paths
+(`~/.agents/skills`, `~/.claude/skills`, ...) and project-level ones
+(`.agents/skills`, `.claude/skills`, ...), deduplicating by canonical path and
+by content hash, so the same skill installed for several tools is reported once
+as a duplicate.
+
+## Global Packages (`klean globals`)
+
+List and remove globally installed packages (npm, cargo, pip, brew).
+
+```bash
+klean globals
 ```
 
 ## Configuration
