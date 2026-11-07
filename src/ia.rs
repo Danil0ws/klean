@@ -42,6 +42,16 @@ pub struct AIItem {
     pub is_duplicate: bool,
     /// Optional description from metadata.
     pub description: Option<String>,
+    /// Content hash (for duplicate detection by content).
+    pub content_hash: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsolidationReport {
+    pub moved: usize,
+    pub symlinks_created: usize,
+    pub duplicates_removed: usize,
+    pub space_freed: u64,
 }
 
 impl AIItem {
@@ -122,14 +132,47 @@ fn scan_skills() -> Vec<AIItem> {
         None => return items,
     };
 
-    let skill_dirs = vec![
+    // Global skill directories across supported AI tools. Shared/alias paths are
+    // deduplicated by canonical location so the same skill is not scanned twice.
+    let mut skill_dirs: Vec<PathBuf> = vec![
         home.join(".claude").join("skills"),
+        home.join(".agents").join("skills"),
         home.join(".ia-agents"),
         home.join(".cursor").join("skills"),
+        home.join(".copilot").join("skills"),
+        home.join(".codex").join("skills"),
+        home.join(".gemini").join("skills"),
+        home.join(".hermes").join("skills"),
+        home.join(".config").join("opencode").join("skills"),
+        home.join(".config").join("goose").join("skills"),
+        home.join(".cline").join("skills"),
+        home.join(".config").join("agents").join("skills"),
+        home.join(".config").join("amp").join("skills"),
+        home.join(".warp").join("skills"),
     ];
 
+    // Project-level skill directories in the current working directory.
+    if let Ok(cwd) = std::env::current_dir() {
+        for rel in [
+            ".agents/skills",
+            ".claude/skills",
+            ".opencode/skills",
+            ".cursor/skills",
+            ".cline/skills",
+            ".goose/skills",
+            ".warp/skills",
+        ] {
+            skill_dirs.push(cwd.join(rel));
+        }
+    }
+
+    let mut seen_dirs: HashSet<PathBuf> = HashSet::new();
     for dir in skill_dirs {
         if !dir.exists() {
+            continue;
+        }
+        let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        if !seen_dirs.insert(canonical) {
             continue;
         }
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -149,6 +192,7 @@ fn scan_skills() -> Vec<AIItem> {
             };
 
             let (description, version) = parse_skill_metadata(&path);
+            let content_hash = compute_content_hash(&path);
 
             items.push(AIItem {
                 name,
@@ -158,6 +202,7 @@ fn scan_skills() -> Vec<AIItem> {
                 size_bytes,
                 is_duplicate: false,
                 description,
+                content_hash,
             });
         }
     }
@@ -235,6 +280,16 @@ fn scan_ai_clis() -> Vec<AIItem> {
         "openai",
         "gemini",
         "perplexity",
+        "hermes",
+        "goose",
+        "cline",
+        "kimi",
+        "dexto",
+        "warp",
+        "replit",
+        "amp",
+        "opencode",
+        "copilot",
     ];
 
     let mut seen = HashSet::new();
@@ -280,6 +335,7 @@ fn scan_ai_clis() -> Vec<AIItem> {
                 size_bytes,
                 is_duplicate: false,
                 description: None,
+                content_hash: None,
             });
         }
     }
@@ -332,6 +388,10 @@ fn scan_mcp_servers() -> Vec<AIItem> {
     let mcp_dirs = vec![
         home.join(".claude").join("mcp-servers"),
         home.join(".config").join("claude").join("mcp"),
+        home.join(".config").join("opencode"),
+        home.join(".cursor").join("mcp"),
+        home.join(".copilot").join("mcp"),
+        home.join(".config").join("goose").join("mcp"),
     ];
 
     for dir in mcp_dirs {
@@ -362,6 +422,7 @@ fn scan_mcp_servers() -> Vec<AIItem> {
                 size_bytes,
                 is_duplicate: false,
                 description: None,
+                content_hash: None,
             });
         }
     }
@@ -373,15 +434,24 @@ fn scan_mcp_servers() -> Vec<AIItem> {
 
 fn mark_duplicates(items: &mut [AIItem]) {
     let mut name_counts: HashMap<String, usize> = HashMap::new();
+    let mut hash_counts: HashMap<String, usize> = HashMap::new();
     for item in items.iter() {
         *name_counts.entry(item.name.clone()).or_insert(0) += 1;
+        if let Some(h) = &item.content_hash {
+            *hash_counts.entry(h.clone()).or_insert(0) += 1;
+        }
     }
 
     for item in items.iter_mut() {
-        if let Some(&count) = name_counts.get(&item.name) {
-            if count > 1 {
-                item.is_duplicate = true;
-            }
+        let by_name = name_counts.get(&item.name).copied().unwrap_or(0) > 1;
+        let by_hash = item
+            .content_hash
+            .as_ref()
+            .and_then(|h| hash_counts.get(h).copied())
+            .unwrap_or(0)
+            > 1;
+        if by_name || by_hash {
+            item.is_duplicate = true;
         }
     }
 }
@@ -467,6 +537,49 @@ fn dir_size(path: &Path) -> u64 {
         }
     }
     total
+}
+
+fn compute_content_hash(path: &Path) -> Option<String> {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    if path.is_file() {
+        files.push(path.to_path_buf());
+    } else if path.is_dir() {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            let Ok(rd) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.is_file() {
+                    out.push(p);
+                }
+            }
+        }
+        walk(path, &mut files);
+    } else {
+        return None;
+    }
+
+    if files.is_empty() {
+        return None;
+    }
+
+    files.sort();
+    let mut hasher = DefaultHasher::new();
+    for f in files {
+        if let Ok(rel) = f.strip_prefix(path) {
+            rel.to_string_lossy().hash(&mut hasher);
+        }
+        if let Ok(bytes) = std::fs::read(&f) {
+            bytes.hash(&mut hasher);
+        }
+    }
+    Some(format!("{:x}", hasher.finish()))
 }
 
 fn home_dir() -> Option<PathBuf> {
