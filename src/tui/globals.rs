@@ -369,10 +369,11 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
     }
 
     let header = Row::new(vec![
-        Cell::from(""),
+        Cell::from(" "),
         Cell::from("PACKAGE").style(Style::default().add_modifier(Modifier::BOLD)),
         Cell::from(Line::from("SIZE").alignment(ratatui::layout::Alignment::Right))
             .style(Style::default().add_modifier(Modifier::BOLD)),
+        Cell::from(""),
         Cell::from("MANAGER / VERSION").style(Style::default().add_modifier(Modifier::BOLD)),
     ])
     .style(Style::default().fg(Color::Yellow))
@@ -412,6 +413,7 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
                     Line::from(pkg.size_string()).alignment(ratatui::layout::Alignment::Right),
                 )
                 .style(Style::default().fg(Color::Cyan)),
+                Cell::from(""),
                 Cell::from(manager_version).style(Style::default().fg(mgr_color)),
             ])
             .style(row_style)
@@ -437,8 +439,9 @@ fn render_list(f: &mut Frame, state: &mut State, area: Rect) {
         rows,
         [
             Constraint::Length(2),  // checkbox
-            Constraint::Min(24),    // PACKAGE
+            Constraint::Min(16),    // PACKAGE
             Constraint::Length(12), // SIZE (right-aligned)
+            Constraint::Length(8),  // spacer
             Constraint::Min(20),    // MANAGER / VERSION
         ],
     )
