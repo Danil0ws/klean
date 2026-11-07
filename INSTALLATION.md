@@ -24,14 +24,26 @@ irm https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install.ps1 | 
 #### Homebrew (Recommended)
 
 ```bash
-brew tap danil0ws/klean
+brew tap klean-cli/klean
+brew trust klean-cli/klean
 brew install klean
+```
+
+If `/usr/local/bin/klean` already exists (e.g. from a previous cargo or
+script install), force the link:
+
+```bash
+brew link --overwrite klean
 ```
 
 Update:
 ```bash
 brew upgrade klean
 ```
+
+Note: Homebrew's official support for macOS Intel (x86_64) ended in 2026.
+On Intel Macs the formula is Tier 3 and builds from source; on Apple Silicon
+a prebuilt bottle is used.
 
 #### Other macOS package managers
 

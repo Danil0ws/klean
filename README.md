@@ -62,7 +62,8 @@ curl -fsSL https://raw.githubusercontent.com/danil0ws/klean/main/scripts/install
 
 **macOS (Homebrew)**
 ```bash
-brew tap danil0ws/klean
+brew tap klean-cli/klean
+brew trust klean-cli/klean
 brew install klean
 ```
 
